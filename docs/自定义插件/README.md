@@ -96,11 +96,11 @@ pnpm install
 pnpm -r build
 
 # 3. 卸载已安装的 npm 版本（如果之前装过）
-dsh plugin --profile web remove @linxin666/dsh-web-ui-all
-dsh plugin --profile web remove @linxin666/dsh-liangshen
-dsh plugin --profile web remove @linxin666/dsh-ssh
-dsh plugin --profile web remove @linxin666/dsh-client-ui-task-board
-dsh plugin --profile web remove @linxin666/dsh-client-ui-aionui-panel
+pnpm dsh plugin --profile web remove @linxin666/dsh-web-ui-all
+pnpm dsh plugin --profile web remove @linxin666/dsh-liangshen
+pnpm dsh plugin --profile web remove @linxin666/dsh-ssh
+pnpm dsh plugin --profile web remove @linxin666/dsh-client-ui-task-board
+pnpm dsh plugin --profile web remove @linxin666/dsh-client-ui-aionui-panel
 
 # 4. 将子包链接到 profile 的 node_modules
 node scripts/link-profile.mjs
