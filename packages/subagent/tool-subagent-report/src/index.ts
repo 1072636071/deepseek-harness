@@ -65,12 +65,10 @@ export function installReportTool(
     disposeTool = childCtx.tools.register(defineTool({
       name: 'report',
       description:
-        'Report selected content to the agent that started you. Call this once before you finish, with a '
-        + 'self-contained final result, and earlier for progress or findings that change what that agent does '
-        + 'next. That agent shares your workspace but does not automatically receive your transcript, tool '
-        + 'output, or reasoning, so finishing your work is not itself a result. Reporting does not end your '
-        + 'turn or finish your work, and only your direct parent receives it. A failed call may still have '
-        + 'arrived, so do not blindly repeat it.',
+        'Report content to the agent that started you: before finishing with a self-contained final result, '
+        + 'and earlier for progress/findings that change its next action. It shares your workspace but not '
+        + 'your transcript, tool output, or reasoning — finishing is not a result. Never ends your turn; only '
+        + 'your direct parent receives it. A failed call may still have arrived; do not blindly repeat it.',
       parameters: {
         output: {
           type: 'string',

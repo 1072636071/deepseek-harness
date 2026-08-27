@@ -26,11 +26,9 @@ export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'send_message',
     description:
-      'Send a message to a background subagent by its subagent id, continuing the same conversation. It '
-      + 'becomes the subagent\'s next turn: if it is still working, the message waits until its current turn '
-      + 'finishes, so it cannot redirect work already underway. This call returns no answer from the '
-      + 'subagent — only confirmation that the message was delivered — so use it to give it more work. A '
-      + 'failure means the message was NOT delivered.',
+      'Send a message to a background subagent by its id, continuing the same conversation. It becomes its '
+      + 'next turn: if still working, waits until that turn finishes — cannot redirect in-flight work. '
+      + 'Returns only delivery confirmation, no answer. Failure means the message was NOT delivered.',
     parameters: {
       subagent_id: {
         type: 'string',
@@ -79,12 +77,10 @@ export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'interrupt_agent',
     description:
-      'Request cancellation of a background agent\'s current turn by its agent id. The target may be your '
-      + 'direct child or a deeper agent created under you. Only the current turn stops: messages already '
-      + 'queued for the agent stay parked until a later send_message, agents it started keep running, and '
-      + 'the agent itself stays available for follow-ups. This call returns as soon as the stop request is '
-      + 'accepted, so the target may keep running briefly; interrupting an agent that already finished is '
-      + 'an accepted no-op.',
+      'Request stopping a background agent\'s current turn by its agent id. Target may be a direct child or '
+      + 'deeper descendant. Only the current turn stops: queued messages stay parked (a later send_message '
+      + 'resumes them), spawned agents keep running, agent stays reusable. Returns on acceptance (may keep '
+      + 'running briefly); interrupting an already-finished agent is an accepted no-op.',
     parameters: {
       agent_id: {
         type: 'string',

@@ -45,12 +45,10 @@ interface RunCodeFlavor {
  */
 const TYPESCRIPT_FLAVOR: RunCodeFlavor = {
   description:
-    'Execute a TypeScript program against the available tools. Takes two required '
-    + 'arguments: `code`, the BODY of an async function (erasable syntax only; top-level '
-    + '`await` and `return` work), and `description`, a short summary of what the program '
-    + 'does. Call tools as `await tools.name(args)` per the declarations in the system '
-    + 'prompt. Only what you print or return is program output — curate it. Image-bearing '
-    + 'subtool results are attached after the run.',
+    'Execute a TypeScript program against the available tools. `code` = the BODY of an async function '
+    + '(erasable syntax; top-level `await`/`return` work); `description` = a short summary. Call tools as '
+    + '`await tools.name(args)` per the system-prompt declarations. Only what you print or return is output. '
+    + 'Image-bearing subtool results attach after the run.',
   codeDescription: 'The program: the body of an async TypeScript function.',
 }
 

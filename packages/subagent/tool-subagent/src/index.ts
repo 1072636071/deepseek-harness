@@ -221,11 +221,10 @@ function providerWording(inheritsConversation: boolean): { description: string; 
   if (inheritsConversation) {
     return {
       description:
-        'Delegate a task to a subagent that inherits this conversation: a child agent seeded with all '
-        + 'completed turns so far (it does not see the current in-flight turn). Use this when the subtask '
-        + 'builds on this conversation\'s context — a follow-up analysis, '
-        + 'a review, a continuation — without consuming this conversation\'s context for the work itself. '
-        + 'You receive its result, not its intermediate steps.',
+        'Delegate a task to a subagent that inherits this conversation: uses all completed turns so far '
+        + '(not the current in-flight turn). For subtasks building on its context — analysis, review, '
+        + 'continuation — without consuming this conversation\'s context. Returns its result, not its '
+        + 'intermediate steps.',
       promptDescription:
         'The task for the subagent. It already sees this conversation\'s completed turns, so build on them '
         + 'freely and state only what is new.',
@@ -233,11 +232,10 @@ function providerWording(inheritsConversation: boolean): { description: string; 
   }
   return {
     description:
-      'Delegate a self-contained task to a subagent (a separate agent that works in its own context) '
-      + 'to offload focused, independent work — research, a scoped '
-      + 'implementation, an analysis — so it does not consume this conversation\'s context. The subagent '
-      + 'returns its result, not its intermediate steps. Give it a '
-      + 'complete, standalone prompt: it does not see this conversation.',
+      'Delegate a self-contained task to a subagent working in its own context to offload focused, '
+      + 'independent work — research, a scoped implementation, an analysis — without consuming this '
+      + 'conversation\'s context. Returns its result, not its intermediate steps. Give a complete, standalone '
+      + 'prompt: it does not see this conversation.',
     promptDescription:
       'The complete, self-contained task for the subagent. It does not share this '
       + 'conversation\'s context, so include everything it needs.',
@@ -310,8 +308,8 @@ export function apply(ctx: Context, config: Config): void {
         // a separately installed capability, so this promise holds whenever the
         // continuable background path is reachable at all.
         ? continuable
-          ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` starts a later turn in the same child conversation. Set `run_in_background: false` only when your next action depends on receiving the result.'
-          : ' This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.'
+          ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When it settles, the runtime sends the parent a notice with its outcome; `send_message` starts a later turn. Set `run_in_background: false` only when your next action needs the result.'
+          : ' Default: waits for the result. Set `run_in_background: true` to return a job id; collect with `job_output`, stop with `job_kill`.'
         : ' This call waits for the subagent and returns its result.'),
       parameters: {
         description: {

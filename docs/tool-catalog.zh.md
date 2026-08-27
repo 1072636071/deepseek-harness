@@ -52,7 +52,7 @@
 
 ### `ask_user_question`
 
-继续操作前，如果需要确认、选择或缺失的信息，请向用户提出简明问题。发送一个或多个问题，每个问题都带一个稳定 id，该 id 会在答案中原样返回。
+向用户提出一个用于确认、选择或补充缺失信息的简明问题。可发送一个或多个问题，每个都带一个稳定 id，该 id 会在答案中原样返回。
 
 ```json
 {
@@ -126,7 +126,7 @@ ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类�
 
 ### `run_code`
 
-针对可用工具执行 TypeScript 程序。接受两个必填参数：`code`，即异步函数的**函数体**（仅使用可擦除语法；支持顶层 `await` 和 `return`）；以及 `description`，简要说明该程序做什么。请根据系统提示词中的声明，以 `await tools.name(args)` 形式调用工具。只有打印或返回的内容属于程序输出，请谨慎筛选。含图片的子工具结果会在运行结束后附加。
+针对可用工具执行 TypeScript 程序。`code` 是异步函数的**函数体**（仅使用可擦除语法；支持顶层 `await` ／ `return`）；`description` 是一句简短说明。请依据系统提示词中的声明，以 `await tools.name(args)` 形式调用工具。只有打印或返回的内容会作为输出；包含图片的子工具结果会在运行结束后附加。
 
 ```json
 {
@@ -158,7 +158,7 @@ ask_user_question 会暂停工具调用，直到当前 UI 提供方返回人类�
 
 ### `exit_plan_mode`
 
-仅在规划模式下使用。提交计划供用户评审，并在获批后退出规划模式。发送**完整的** Markdown 计划，以一个为计划命名的 # 标题开头。用户可以批准（从你的下一步骤起执行计划），也可以要求继续规划；其反馈会通过工具结果返回，请修改后再次提交。
+仅在规划模式下使用。提交计划供用户评审，获批后退出规划模式。发送**完整的** Markdown 计划，并以一个 # 标题开头。用户可批准（从你的下一步开始执行）或继续规划——反馈通过结果返回，请修改后再次提交。
 
 ```json
 {
@@ -273,7 +273,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `cordis_define`
 
-定义一个不可变的 Cordis Package。新建 Plugin 时使用 kind:"new"，只提供 3 至 6 位小写英文字母组成的语义前缀；Host 返回最终 pluginId 和 packageId。修改现有 Plugin 时使用 kind:"existing" 并传入精确 pluginId，以追加 Package 而不覆盖旧版本。code.host 与 code.client 至少提供一个；每个值都是返回 Cordis Plugin 的 plain JavaScript 函数体，不经过 TypeScript、JSX 或 import 转换。依赖 Service、Event、Builtin、Slot 或 token 前先查询 Inspect。Define 只校验参数和语法并记录源码，不申请审批、不执行 apply，也不改变 currentPackageId。成功后用返回的 ID 调用 cordis_run。
+定义一个不可变的 Cordis Package。kind:"new"：只提供 3–6 位小写字母组成的 idPrefix，Host 会返回最终的 pluginId 和 packageId；kind:"existing"：按精确 pluginId 向现有 Plugin 追加一个 Package（保留旧版本）。code.host 与 code.client 至少提供一个——每个都是返回 Cordis Plugin 的 plain-JS 函数体，不做 TypeScript、JSX 或 import 转换。依赖 Service、Event、Builtin、Slot 或 token 前先查询 Inspect。Define 只校验参数与语法并记录源码，不审批、不执行 apply、也不改变 currentPackageId。成功后用返回的 ID 调用 cordis_run。
 
 ```json
 {
@@ -355,7 +355,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `cordis_inspect_list`
 
-列出 Host 当前已知的全部 Cordis Inspect Provider，包括本地 Host Provider 和 Client 最近同步的 manifest。每项包含所属平台、用途、只读方法及输入／输出 schema。创建或修改 Package 前先调用本 Tool，再从结果中选择 cordis_inspect_query 的 provider 和 method。不要猜测名称，也不要把 Inspect method 当作 Plugin 代码可调用的业务 Service。
+列出 Host 已知的 Cordis Inspect Provider：本地 Host Provider 加最新的 Client manifest。每项包含平台、用途、只读方法以及输入／输出 schema。创建或修改 Package 前先调用本工具，再为 cordis_inspect_query 挑选 provider 与 method。不要猜测名称，也不要把 Inspect method 当作 Plugin 代码可调用的业务 Service。
 
 ```json
 {
@@ -368,7 +368,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `cordis_inspect_query`
 
-执行 Inspect Provider 显式声明的只读查询。platform、provider 和 method 必须来自 cordis_inspect_list，input 必须符合该方法的 schema。在 cordis_define 前用本 Tool 读取精确 Service 方法、Event mode、Builtin 签名、Tool schema、主题 token，或实时 Slot 树及 props。Host 查询在本地执行；Client 查询等待首个有效页面响应，在页面回答或 Tool 被取消前保持 pending。本 Tool 不能调用业务 Service 方法或修改运行时。查询 Service.listService 和 Event.listEvents 时，先不传 input 浏览紧凑签名目录，再查询精确 service 或 event 获取结构化约定和引用类型。查询 Slots.listSubTree 时，先不传 root 浏览紧凑树，再查询精确 root 获取完整注册约定和 props。
+执行 Inspect Provider 声明的只读查询。platform、provider 和 method 取自 cordis_inspect_list；input 必须符合该方法的 schema。在 cordis_define 前用它读取精确的 Service 方法、Event 模式、Builtin 签名、Tool schema、主题 token，或实时的 Slot 树及 props。Host 查询在本地执行；Client 查询等待首个有效页面或取消。不能调用业务 Service 方法，也不能修改运行时。查询 Service.listService／Event.listEvents 时，先空查询浏览签名目录，再查询精确项获取契约与引用类型。查询 Slots.listSubTree 时，先空查询浏览树，再查询精确 root 获取完整注册契约与 props。
 
 ```json
 {
@@ -406,7 +406,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `cordis_inspect_self`
 
-按逐层增加的详细程度检查当前 Session 拥有的动态 Cordis 对象。不传 ID 时只列 Plugin 摘要；只传 pluginId 时返回版本指针、最新 Run 和全部 Package 摘要；只有同时传 pluginId 与 packageId 才返回该不可变 Package 的 Host/Client 源码和运行诊断。packageId 不能单独传入。处理 @pluginId、修复异步失败或定义更新版本前，先查询精确 Package。本 Tool 只读，不执行代码，也不改变版本指针。
+按逐层增加的详细程度检查当前 Session 拥有的动态 Cordis 对象。不带 ID：只返回 Plugin 摘要。仅 pluginId：返回版本指针、最新 Run 和每个 Package 的摘要。pluginId＋packageId：返回该不可变 Package 的 Host/Client 源码和运行诊断（packageId 不能单独给出）。处理 @pluginId、修复异步失败或定义更新版本前，先查询精确 Package。本工具只读：不执行代码，也不改变版本指针。
 
 ```json
 {
@@ -428,7 +428,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `cordis_run`
 
-激活动态 Plugin 的一个精确 Package。首次激活、重启 currentPackageId 或回退使用 mode:"run"；已有 current 时，即使 Plugin 当前已停止，切换到其他 Package 也使用 mode:"update"。未授权的 Client Package 创建审批请求并返回 awaiting-approval；已授权的 Package 返回 starting，并在浏览器中异步继续。两种结果都不会在 Tool 内等待最终结局。currentPackageId 只在完整成功后改变；失败时保留旧 current 和目标 next。异步成功、拒绝或技术失败通过状态与 steering 报告。技术失败后，用 cordis_inspect_self 读取诊断，修正同一 Plugin 并自主重试。用户拒绝后不要再次申请审批。
+激活动态 Plugin 的一个精确 Package。mode:"run"：首次激活、重启 current 或回退；mode:"update"：切换到另一个 Package（停止时也允许）。未授权的 Client Package 会发起审批请求并返回 awaiting-approval；已授权则返回 starting 并在浏览器中异步继续。两者都不等待最终结果。currentPackageId 仅在完全成功时改变；失败时保留旧 current，并把目标留作 next。结果通过 state 与 steering 报告。技术失败后用 cordis_inspect_self 读取诊断，修正同一 Plugin 后重试；用户拒绝后绝不要再次申请审批。
 
 ```json
 {
@@ -463,7 +463,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `cordis_stop`
 
-停止动态 Plugin 的当前 Run，并取消尚未完成的审批或激活请求。保留 Plugin、全部不可变 Package、授权、currentPackageId 和 nextPackageId，以便之后直接运行或更新。停止已处于停止状态的 Plugin 会幂等成功。临时禁用副作用使用本 Tool；永久移除使用 cordis_undefine。
+停止动态 Plugin 的当前 Run，并取消未完成的审批／激活请求。保留该 Plugin、Package、授权、currentPackageId 和 nextPackageId，供之后 run／update 使用。对已停止的 Plugin 幂等。用于临时停用相关效果；永久移除使用 cordis_undefine。
 
 ```json
 {
@@ -484,7 +484,7 @@ pwsh 工具是 Windows 组合中 bash 执行器 seam 的 PowerShell 方言消费
 
 ### `cordis_undefine`
 
-永久移除当前 Session 拥有的动态 Plugin。如果它正在运行或等待审批，先停止并取消请求，再删除全部 Package、授权和版本指针。返回后，其 pluginId、packageIds、@ 引用和 Package 业务视图均失效；历史卡片只保留“Plugin 已移除”记录。需要保留版本以便重启或回退时不要调用本 Tool，应改用 cordis_stop。
+永久移除当前 Session 拥有的动态 Plugin。如果它在运行或等待审批，先停止并取消请求，再删除所有 Package、授权和版本指针。之后其 pluginId、packageIds、@ 引用和 Package 业务视图均失效；历史只保留一条 “Plugin removed” 记录。当版本需保留以便重启／回退时，改用 cordis_stop。
 
 ```json
 {
@@ -968,7 +968,7 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 
 ### `create_goal`
 
-当当前直接人类请求是需要跨自主 Goal Round 持续推进的长期目标时，创建一个持久化的同会话完成目标。即使用户没有明确说「创建目标」，你也可以推断其意图。不要用于简单的单轮工作。执行时会拒绝非人类权限和 subagent 权限。
+为当前直接人类发出的长期请求创建一个持久的同会话目标。无需询问即可推断 objective。不用于简单的单轮工作；拒绝非人类权限和 subagent 权限。
 
 ```json
 {
@@ -993,7 +993,7 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 
 ### `get_goal`
 
-读取当前的同会话目标，包括确切的 id／revision、目标、阶段、已完成的延续 Round 数、Round 上限、存在时的阻塞原因，以及是否已准备下一次延续。更新目标前请先调用此工具。
+读取当前的同会话目标：精确的 id／revision、objective、阶段、已完成的延续轮数、轮数上限、存在时的阻塞原因，以及已准备好的下一次延续。调用 update_goal 前先调用本工具。
 
 ```json
 {
@@ -1006,7 +1006,7 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 
 ### `update_goal`
 
-更新确切的当前目标 revision。edit、pause 和 resume 要求直接的顶层人类请求。在自动延续当前目标期间，也允许 complete 和 blocked。在达到配置的最小 Round 数之前会拒绝 blocked；模型仍须判断相同条件是否在这些 Round 中持续存在，并在 blocked_reason 中予以说明。
+更新确切的当前 revision。edit、pause、resume 要求直接的顶层人类请求；自动延续允许 complete、blocked。未达最少轮数前会拒绝 blocked；由模型判断相同条件是否持续存在，并在 blocked_reason 中说明。
 
 ```json
 {
@@ -1062,7 +1062,7 @@ create、edit、pause 和 resume 要求直接来自人类的根权限；complete
 
 ### `schedule_create`
 
-在当前会话中创建一条提醒。请提供非空 prompt 和恰好一个 selector：正的安全整数 after_seconds 延时；作为严格带偏移日期时间或本地日期／时间对象的 at；或不小于 300 的安全整数 every_seconds。固定速率提醒始终与创建时刻对齐，会跳过错过的发生时点，并把每条逾期规则的最新一个发生时点合并到一个批次中。交付模式是 session-local：只有此会话处于 live 状态时，提醒才会准时运行；否则提醒会进入 overdue 状态，直至会话恢复。
+创建一条当前会话提醒；prompt 非空；恰好一个 selector：after_seconds 为正的安全整数延时，at 为严格的带偏移日期时间或本地日期／时间对象，every_seconds 为不小于 300 的正安全整数。固定速率：与创建时刻对齐、跳过错过的发生时点、每条逾期规则合并最新一条。交付为 session-local：仅当会话处于 live 时可运行，否则进入 overdue 直至恢复。
 
 ```json
 {
@@ -1119,7 +1119,7 @@ create、edit、pause 和 resume 要求直接来自人类的根权限；complete
 
 ### `schedule_delete`
 
-使用 schedule_create 或 schedule_list 返回的确切 id，删除当前会话中的一条活动提醒。未知或已经结束的 id 会返回 deleted false。
+用来自 schedule_create、schedule_list 的确切 id，删除当前会话中的一条活动提醒。未知或已结束的 id 返回 deleted false。
 
 ```json
 {
@@ -1140,7 +1140,7 @@ create、edit、pause 和 resume 要求直接来自人类的根权限；complete
 
 ### `schedule_list`
 
-按创建顺序列出当前会话中的所有活动提醒，包括确切 id、UTC 目标、scheduled 或 overdue 状态，以及 session-local 交付模式。
+按创建顺序列出当前会话中的活动提醒：精确 id、UTC 目标、scheduled／overdue 状态，以及 session-local 交付模式。
 
 ```json
 {
@@ -1207,7 +1207,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `ralph`
 
-围绕一个不可变目标运行使用全新 agent 的前台 Ralph 循环。仅当直接人类明确要求 Ralph 或使用全新 agent 迭代时使用。每个 Round 都会启动一个全新子级，该子级看不到父级对话或先前子会话；共享工作区充当长期记忆，Round 之间只传递有界的结构化报告。当工作进程报告完成、报告具体阻塞项或达到 Round 上限时，调用返回。普通的长期同会话工作应使用 goal 工具。
+围绕一个不可变目标运行前台的全新 agent Ralph 循环。仅当直接人类明确要求 Ralph 或全新 agent 迭代时使用。每个 Round 都会启动一个全新的子级，它看不到父级对话或先前子会话；共享工作区充当长期记忆，Round 之间只传递有界的结构化报告。当工作进程报告完成、报告具体阻塞项或达到上限时，调用返回。普通的长期同会话工作属于 goal 工具。
 
 ```json
 {
@@ -1498,7 +1498,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `subagent`
 
-将一项自包含任务委派给 subagent（在自身上下文中工作的独立 agent），用它卸载聚焦且独立的工作，例如研究、限定范围的实现或分析，以免消耗当前对话的上下文。subagent 会返回结果，但不会返回中间步骤。请提供完整、独立的提示词，因为它看不到当前对话。此调用默认等待结果。设置 `run_in_background: true` 可返回 job id；使用 `job_output` 收集结果，使用 `job_kill` 停止任务。
+将一项自包含任务委派给在其自身上下文中工作的 subagent（独立 agent），以此卸载聚焦且独立的工作，例如研究、限定范围的实现或分析，而不消耗当前对话的上下文。它返回结果而非中间步骤。请提供完整、独立的提示词，因为它看不到当前对话。默认等待结果；设置 `run_in_background: true` 可返回 job id，用 `job_output` 收集、`job_kill` 停止。
 
 ```json
 {
@@ -1534,7 +1534,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `interrupt_agent`
 
-根据 agent id 请求取消后台 agent 的当前轮次。目标可以是你的直接子级，也可以是在你下方创建的更深层 agent。只有当前轮次会停止：已经排队发给该 agent 的消息会一直搁置到后续的 send_message；它启动的 agent 会继续运行；该 agent 本身仍可接受后续操作。停止请求被接受后，此调用立即返回，因此目标可能还会短暂运行；中断一个已经完成的 agent 是可接受的空操作。
+按 agent id 请求停止后台 agent 的当前轮次。目标可以是直接子级，也可以是更深的后代。只有当前轮次会停止：排队中的消息保持搁置（后续的 send_message 会恢复它们），已派生的 agent 继续运行，该 agent 仍可复用。接受请求后即返回（目标可能还会短暂运行）；中断已完成的 agent 是被接受的空操作。
 
 ```json
 {
@@ -1555,7 +1555,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `list_agents`
 
-按持久 id 和标签列出你的可继续后台 subagent。用它回忆你启动过哪些 subagent，而不是轮询完成情况——subagent 完成时你会被告知。状态来自实时注册表：running 表示 agent 此刻正在工作；idle 表示已加载但处于轮次之间，可能正在等待它启动的 agent；ready 表示它只存在于存储中——可恢复而非终态，也不表示有结果等待收集；`send_message` 会在同一对话上开启新的轮次，且无论处于哪种状态，直接子级都仍可作为 `send_message` 的目标。该快照并非投递承诺；`send_message` 会执行权威检查，仍可能失败。无法读取的子级会作为诊断信息报告，而不会被静默丢弃。`descendants` 作用域会按稳定的前序顺序遍历你下方的整棵树，并为每个条目标注其持久的直接父会话 id 和深度。只有深度为 1 的条目可以使用 `send_message`；更深的条目只能作为 `interrupt_agent` 的候选目标。
+按持久 id 和标签列出你可继续的后台 subagent；某个结束时会收到通知，本工具不用于轮询。状态：running = 当前正在工作，idle = 处于轮次之间，ready = 仅存在于存储中（可恢复而非终态）。该快照并非投递承诺——以 `send_message` 为准。scope 为 children（默认）= 直接子级；descendants = 按前序遍历整棵树，带持久的直接父会话 id 和深度。`send_message` 仅限深度 1；更深的只能用 `interrupt_agent`。无法读取的子级会作为诊断信息报告。
 
 ```json
 {
@@ -1577,7 +1577,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `send_message`
 
-根据 subagent id 向后台 subagent 发送消息，继续同一段对话。该消息会成为 subagent 的下一轮次：如果它仍在工作，消息会等待当前轮次结束，因此无法改变已经开始的工作方向。此调用不会返回 subagent 的答案，只会确认消息已投递，因此请用它分派更多工作。调用失败表示消息**未**投递。
+按 id 向后台 subagent 发送消息，继续同一段对话。该消息会成为它的下一轮次：如果它仍在工作，会等待当前轮次结束——无法改变正在进行的工作。只返回投递确认，不返回回答。失败即表示消息**未**投递。
 
 ```json
 {
@@ -1609,7 +1609,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `report`
 
-向启动你的 agent 报告选定内容。在你结束前调用一次，给出自包含的最终结果；当进度或发现会改变该 agent 接下来的行动时，也可以更早调用。该 agent 与你共享工作区，但不会自动收到你的 transcript（文本记录）、工具输出或推理，因此完成你的工作本身并不等于交出结果。报告不会结束你的轮次或完成你的工作，且只有直接父级会收到。失败的调用仍可能已经送达，因此不要盲目重复。
+向启动你的 agent 报告内容：结束前报告自包含的最终结果，更早时报告会改变其下一步行动的进度／发现。它与你共享工作区，但不共享你的 transcript（文本记录）、工具输出或推理——结束本身并不是结果。绝不会结束你的轮次；只有你的直接父级会收到。失败的调用仍可能已送达，请不要盲目重复。
 
 ```json
 {
@@ -1674,7 +1674,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `job_output`
 
-读取后台任务。流式任务只返回自上次读取以来的输出；最终输出任务会在结算后返回结果。每个响应都以 `[status: ...]` 结尾。读取默认不阻塞；设置 `wait: true` 后，最长等待到配置的上限。
+读取后台任务。流式任务返回自上次读取以来的输出；最终输出任务在结算后返回结果。每个响应都以 `[status: ...]` 结尾。除非设置 `wait: true`，否则不阻塞（最长等待到配置的上限）。
 
 ```json
 {
@@ -2001,7 +2001,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `wait_agent`
 
-等待本次调用开始后下一次 teammate 状态、mailbox 或共享任务变更。它绝不会唤醒 inactive member；若没有其他 member 正在 running 或 provisioning，则立即返回 noProgress。唤醒或超时后应重新列出状态，而不是轮询。
+等待本次调用开始后下一次 teammate 状态、mailbox 或共享任务变更。绝不唤醒 inactive member；当没有 member 正在 running 或 provisioning 时立即返回 noProgress。唤醒或超时后应重新列出状态，而不是轮询。
 
 ```json
 {
@@ -2026,7 +2026,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `todo_write`
 
-记录并更新当前工作的结构化任务列表。每次调用都要发送**完整列表**，它会**替换**之前的列表，不支持局部更新或逐项编辑。请用它规划多步骤工作并展示进度：开始前为每个具体步骤添加一项 todo。将当前正在处理的每项 todo 标记为 `in_progress`；确实并行运行时（例如并发 subagent 或后台命令）可同时标记多项，顺序工作则标记 1 项。只要工作尚未完成，就应至少有一项任务为 `in_progress`。某项 todo 完成后立即标记为 `completed`，不要批量标记完成；只有全部工作完成后，才可以没有 `in_progress` 项。简单的单步骤任务无需使用列表。状态：`pending`（未开始）、`in_progress`（正在处理）、`completed`（已完成）。
+记录当前工作的结构化任务列表。每次调用都要发送**完整列表**，它会**替换**之前的列表（不支持局部更新或逐项编辑）。为规划多步骤工作并展示进度，请为每个具体步骤添加一项 todo。将正在处理的每项 todo 标记为 `in_progress`——确实并行运行时（例如并发 subagent 或后台命令）可同时标记多项，顺序工作则标记一项；只要还有工作，就应至少有一项为 `in_progress`。某项 todo 完成的瞬间就标记为 `completed`（不要批量）；只有全部工作完成，才允许没有 `in_progress` 项。简单的单步骤任务跳过本工具。状态：`pending`（未开始）、`in_progress`（现在）、`completed`（已完成）。
 
 ```json
 {
