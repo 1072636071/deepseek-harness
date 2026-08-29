@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { deepFreeze } from '@deepseek-ai/dsh-llm'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionWriteBehind } from '../src/write-behind.ts'
 
@@ -271,5 +272,33 @@ describe('SessionWriteBehind', () => {
     await controller.flush()
     expect(sizes).toEqual([batchSize, batchSize])
     expect(controller.hasWork).toBe(false)
+  })
+})
+
+describe('SessionWriteBehind retention', () => {
+  it('retains a deep-frozen event by reference and clones a mutable one', async () => {
+    vi.useFakeTimers()
+    const batches: readonly SessionEvent[][] = []
+    const controller = new SessionWriteBehind({
+      maxDelayMs: 200,
+      // Keep the batch reference (no copy here either) so element identity is observable.
+      write: async (events) => { batches.push(events) },
+      reportBackgroundFailure: vi.fn(),
+    })
+
+    const frozen = deepFreeze(event(0))
+    const mutable = event(1)
+    controller.enqueue(frozen)
+    controller.enqueue(mutable)
+    // Producer-side mutation after enqueue must not reach the queue for the
+    // non-frozen event; the frozen one cannot be mutated at all.
+    mutable.data.turn = 99
+    await vi.advanceTimersByTimeAsync(200)
+
+    const [batch] = batches
+    expect(batch).toHaveLength(2)
+    expect(batch[0]).toBe(frozen)
+    expect(batch[1]).not.toBe(mutable)
+    expect(batch[1]).toEqual(expect.objectContaining({ seq: 1, data: { turn: 2 } }))
   })
 })

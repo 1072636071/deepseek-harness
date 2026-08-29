@@ -5,6 +5,18 @@
 
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 
+/**
+ * Whether an event is safe to retain by reference: its envelope and data
+ * payload are frozen. This defends against an unfrozen event (the clone
+ * fallback preserves the old producer-isolation semantics); it does NOT
+ * detect an adversarially "frozen envelope, mutable inner object" input —
+ * the only producer is the coordinator's `session/event` observer, and
+ * `session.append` deep-freezes the whole event graph.
+ */
+function isRetainableEvent(event: SessionEvent): boolean {
+  return Object.isFrozen(event) && Object.isFrozen(event.data)
+}
+
 /** Dependencies and scheduling policy for one live session's write controller. */
 export interface SessionWriteBehindOptions {
   /** Maximum intentional batching wait after an idle queue receives work. */
@@ -38,13 +50,15 @@ export class SessionWriteBehind {
   }
 
   /**
-   * Copy one event into the persistence-owned queue and start a fixed deadline
-   * when the automatic path is idle.
-   * @param event - frozen live event to retain independently of its producer.
+   * Retain one event and start a fixed deadline when the automatic path is
+   * idle. A frozen event is retained by reference — cloning it here would
+   * deep-copy every streaming delta on the hot append path — while anything
+   * not frozen is cloned so the queue stays independent of its producer.
+   * @param event - the live event to persist (frozen events are shared).
    */
   enqueue(event: SessionEvent): void {
     const wasEmpty = this.pending.length === 0
-    this.pending.push(structuredClone(event))
+    this.pending.push(isRetainableEvent(event) ? event : structuredClone(event))
     if (this.barrier !== undefined) return
     if (this.automaticPaused) {
       this.automaticPaused = false
