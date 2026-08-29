@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek Harness 代码审查报告 · 性能与设计优雅度</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #131a23;
+    --card: #161f2b;
+    --card2: #1b2532;
+    --border: #263244;
+    --text: #dce4ee;
+    --muted: #8b99ab;
+    --accent: #4d8dff;
+    --high: #ff5d5d;
+    --med: #ffb454;
+    --low: #6ea8fe;
+    --good: #4ade80;
+    --code-bg: #0a0f16;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    line-height: 1.7;
+    font-size: 15px;
+  }
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(13,17,23,.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex; gap: 18px; flex-wrap: wrap; align-items: center;
+  }
+  nav .brand { font-weight: 700; color: var(--accent); margin-right: 8px; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 13.5px; }
+  nav a:hover { color: var(--text); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 80px; }
+
+  header.hero { padding: 40px 0 8px; }
+  .hero h1 { font-size: 30px; letter-spacing: .5px; }
+  .hero h1 span { color: var(--accent); }
+  .hero .sub { color: var(--muted); margin-top: 8px; font-size: 14px; }
+  .stats { display: flex; gap: 14px; flex-wrap: wrap; margin: 24px 0 8px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 20px; min-width: 130px;
+  }
+  .stat b { display: block; font-size: 24px; color: var(--accent); }
+  .stat span { font-size: 12.5px; color: var(--muted); }
+
+  .verdict {
+    margin: 26px 0; padding: 22px 26px;
+    background: linear-gradient(135deg, rgba(77,141,255,.10), rgba(74,222,128,.06));
+    border: 1px solid #2b3d5e; border-radius: 14px;
+  }
+  .verdict h2 { font-size: 18px; margin-bottom: 10px; }
+  .verdict p { color: #c4d2e4; font-size: 14.5px; }
+  .verdict .pill { display:inline-block; margin-right:8px; padding: 2px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+
+  h2.sec {
+    font-size: 21px; margin: 48px 0 6px; padding-left: 12px;
+    border-left: 4px solid var(--accent);
+  }
+  p.secdesc { color: var(--muted); margin: 0 0 18px 16px; font-size: 13.5px; }
+
+  /* scorecard */
+  .zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .zone { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .zone h3 { font-size: 15.5px; margin-bottom: 2px; }
+  .zone .pkgs { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 7px 0; font-size: 12.5px; }
+  .bar-row .lbl { width: 74px; color: var(--muted); flex: none; }
+  .bar { flex: 1; height: 8px; background: var(--code-bg); border-radius: 4px; overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 4px; }
+  .bar-row .val { width: 44px; text-align: right; flex: none; font-variant-numeric: tabular-nums; }
+
+  /* finding cards */
+  .finding {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 22px; margin-bottom: 14px;
+  }
+  .finding.high { border-left: 4px solid var(--high); }
+  .finding.med  { border-left: 4px solid var(--med); }
+  .finding.low  { border-left: 4px solid var(--low); }
+  .finding.good { border-left: 4px solid var(--good); }
+  .fhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .badge {
+    flex: none; font-size: 11.5px; font-weight: 700; letter-spacing: .5px;
+    padding: 2px 10px; border-radius: 999px;
+  }
+  .badge.high { background: rgba(255,93,93,.14); color: var(--high); border: 1px solid rgba(255,93,93,.4); }
+  .badge.med  { background: rgba(255,180,84,.12); color: var(--med); border: 1px solid rgba(255,180,84,.4); }
+  .badge.low  { background: rgba(110,168,254,.12); color: var(--low); border: 1px solid rgba(110,168,254,.4); }
+  .badge.good { background: rgba(74,222,128,.12); color: var(--good); border: 1px solid rgba(74,222,128,.4); }
+  .badge.zone { background: var(--code-bg); color: var(--muted); border: 1px solid var(--border); font-weight: 500; }
+  .fhead .title { font-size: 15.5px; font-weight: 600; }
+  .finding p { font-size: 13.8px; color: #b9c6d8; margin: 4px 0; }
+  .finding .fix { color: #9fd8ae; font-size: 13.3px; }
+  .finding .fix::before { content: "⇢ 改进方向："; color: var(--good); font-weight: 600; }
+  code {
+    font-family: Consolas, "JetBrains Mono", monospace; font-size: 12.5px;
+    background: var(--code-bg); border: 1px solid #1e2938; border-radius: 5px;
+    padding: 1px 6px; color: #9ecbff; word-break: break-all;
+  }
+  .filters { display: flex; gap: 8px; margin: 0 0 16px 16px; flex-wrap: wrap; }
+  .filters button {
+    background: var(--card); color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 16px; font-size: 12.5px; cursor: pointer;
+  }
+  .filters button.on { color: var(--text); border-color: var(--accent); background: rgba(77,141,255,.12); }
+
+  .top-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .top-card {
+    background: var(--card2); border: 1px solid #2b3d5e; border-radius: 12px; padding: 18px 20px; position: relative;
+  }
+  .top-card .rank { position: absolute; top: -12px; left: 16px; background: var(--high); color: #fff; font-size: 12px; font-weight: 800; border-radius: 8px; padding: 2px 10px; }
+  .top-card h4 { margin: 10px 0 6px; font-size: 15px; }
+  .top-card p { font-size: 13.3px; color: #b9c6d8; }
+
+  .theme-note {
+    margin: 18px 0 0 16px; padding: 14px 18px; font-size: 13.8px;
+    background: rgba(255,180,84,.07); border: 1px dashed rgba(255,180,84,.45); border-radius: 10px; color: #e8d5b5;
+  }
+
+  footer { margin-top: 64px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--border); padding-top: 18px; }
+  footer code { font-size: 11.5px; }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">DSH 审查报告</span>
+  <a href="#verdict">总评</a>
+  <a href="#scorecard">分区评分</a>
+  <a href="#top">关键发现</a>
+  <a href="#perf">性能问题</a>
+  <a href="#design">设计问题</a>
+  <a href="#good">亮点</a>
+  <a href="#method">方法论</a>
+</nav>
+
+<div class="wrap">
+
+<header class="hero">
+  <h1>DeepSeek Harness <span>代码审查报告</span></h1>
+  <div class="sub">性能余量 × 设计优雅度 · 基于 dsh-plugin-dev 技能规范对官方 monorepo 源码 checkout 的静态深读 · 源码版本 v0.1.2-alpha.1（commit 42dff72b，2026-08-28）</div>
+  <div class="stats">
+    <div class="stat"><b>134万+</b><span>TypeScript/TSX 行数</span></div>
+    <div class="stat"><b>247</b><span>包目录（56 个顶层包组）</span></div>
+    <div class="stat"><b>5</b><span>审查分区</span></div>
+    <div class="stat"><b>30+</b><span>带证据的发现</span></div>
+    <div class="stat"><b>12</b><span>值得保持的亮点</span></div>
+  </div>
+</header>
+
+<!-- ================= 总评 ================= -->
+<section id="verdict">
+  <h2 class="sec">总评</h2>
+  <p class="secdesc">一句话结论先行。</p>
+  <div class="verdict">
+    <h2>
+      <span class="pill" style="background:rgba(74,222,128,.14);color:#4ade80;">工程质量显著高于平均水平</span>
+      <span class="pill" style="background:rgba(77,141,255,.14);color:#4d8dff;">性能仍有明确余量</span>
+    </h2>
+    <p>
+      这是一份纪律性极强的代码库：安全（0600 权限校验、防 symlink planting、防 ripgrep 配置注入）、取消语义（AbortSignal 全链路传播）、资源有界性（输出 tail 封顶 + spill、write-behind 批写）三方面的完成度是多数工业级项目达不到的。
+    </p>
+    <p style="margin-top:8px">
+      <b>性能余量呈单一系统性主题：热路径上的重复深拷贝与重复重建。</b>约 60% 的性能发现都归于"同一个值在一次请求/一个 delta/一次工具调用内被克隆或重建 2–4 遍"——工具注册表 view() 每次调用重建、流式 delta 被 3 次深拷贝、工具结果被 snapshot 3–4 遍、系统提示每步 structuredClone 全部 schema、token-meter 全量重定价。修复方向明确且局部化（registry generation 记忆化、ownership-transfer 代替克隆、增量 fold），不需要动架构。
+    </p>
+    <p style="margin-top:8px">
+      <b>设计优雅度总体是深模块风格（Ousterhout 意义上）</b>——PersistenceBackend、output-retention、compaction 事务、SubagentContinuationManager 都是教科书级。主要债务集中在四处：<code>core/tools/index.ts</code> 1945 行 God 文件、一次工具执行的状态散落 5 张 WeakMap、三个 out-of-process subagent provider 平行重复同一生命周期骨架、HTTP 错误→稳定码映射在两个 LLM 适配器重复且已开始漂移。
+    </p>
+  </div>
+</section>
+
+<!-- ================= 分区评分 ================= -->
+<section id="scorecard">
+  <h2 class="sec">分区评分</h2>
+  <p class="secdesc">10 分制。评分依据各分区深读发现的密度与严重度，非运行时基准测试。</p>
+  <div class="zones">
+    <div class="zone">
+      <h3>① 核心基础设施</h3>
+      <div class="pkgs">core · context · typert · util · guard · hooks（约 6.3 万行）</div>
+      <div class="bar-row"><span class="lbl">性能</span><div class="bar"><i style="width:70%;background:var(--med)"></i></div><span class="val">7.0</span></div>
+      <div class="bar-row"><span class="lbl">设计</span><div class="bar"><i style="width:80%;background:var(--accent)"></i></div><span class="val">8.0</span></div>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:8px;">最高频热路径所在：工具注册表 view() 无缓存、结果多重 snapshot；5 张 WeakMap 旁表 + 1945 行 God 文件。</p>
+    </div>
+    <div class="zone">
+      <h3>② 模型与会话层</h3>
+      <div class="pkgs">llm · session · compaction · spill · storage · session-query（约 10 万行）</div>
+      <div class="bar-row"><span class="lbl">性能</span><div class="bar"><i style="width:70%;background:var(--med)"></i></div><span class="val">7.0</span></div>
+      <div class="bar-row"><span class="lbl">设计</span><div class="bar"><i style="width:85%;background:var(--good)"></i></div><span class="val">8.5</span></div>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:8px;">流式 delta 3 次深拷贝是最大热点；但 PersistenceBackend、增量 fold、compaction KV-cache 复用是全库最优雅的三段。</p>
+    </div>
+    <div class="zone">
+      <h3>③ 执行层</h3>
+      <div class="pkgs">subagent · workflow · shell · sandbox · subprocess · terminal · code-runtime · lsp · mcp · fs（约 12 万行）</div>
+      <div class="bar-row"><span class="lbl">性能</span><div class="bar"><i style="width:70%;background:var(--med)"></i></div><span class="val">7.0</span></div>
+      <div class="bar-row"><span class="lbl">设计</span><div class="bar"><i style="width:80%;background:var(--accent)"></i></div><span class="val">8.0</span></div>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:8px;">唯一真正的 O(n²)：PTY scrollback 缓冲每 chunk 全量扫描；Windows taskkill 同步阻塞事件循环；三个 provider 生命周期三份拷贝。</p>
+    </div>
+    <div class="zone">
+      <h3>④ 客户端与 API 层</h3>
+      <div class="pkgs">client（ui-* 约 40 子包）· web · host · api/gateway（约 12 万行）</div>
+      <div class="bar-row"><span class="lbl">性能</span><div class="bar"><i style="width:65%;background:var(--med)"></i></div><span class="val">6.5</span></div>
+      <div class="bar-row"><span class="lbl">设计</span><div class="bar"><i style="width:75%;background:var(--accent)"></i></div><span class="val">7.5</span></div>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:8px;">聊天长列表无虚拟化、回翻只增不减；store 持久化绕过 rAF 批量；wire 协议缺版本协商。store 引擎与增量 Markdown 解析是精品。</p>
+    </div>
+    <div class="zone">
+      <h3>⑤ 外围与扩展层</h3>
+      <div class="pkgs">experimental · extensions · credentials · skill · schedule · boot 等（约 18 万行）</div>
+      <div class="bar-row"><span class="lbl">性能</span><div class="bar"><i style="width:90%;background:var(--good)"></i></div><span class="val">9.0</span></div>
+      <div class="bar-row"><span class="lbl">设计</span><div class="bar"><i style="width:90%;background:var(--good)"></i></div><span class="val">9.0</span></div>
+      <p style="font-size:12.5px;color:var(--muted);margin-top:8px;">最干净的一区：零定时器泄漏、experimental 边界由机制而非约定保证、credentials-local 安全设计教科书级。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 关键发现 ================= -->
+<section id="top">
+  <h2 class="sec">五个最值得修的发现</h2>
+  <p class="secdesc">按「影响面 × 修复收益」排序，全部有代码证据。</p>
+  <div class="top-grid">
+    <div class="top-card"><span class="rank">1</span>
+      <h4>工具注册表 view() 每次调用重建全量索引</h4>
+      <p>一次工具调用触发 <code>view()</code> 5 次以上，每次沿 scope 链重建 Map/Set 并逐层 <code>admits()</code> 过滤，O(层数×工具数) 分配。<code>ScopedLayers.onChange</code> 已有变更通知，按 registry generation 缓存即可消除。</p>
+      <p style="margin-top:6px"><code>packages/core/tools/src/index.ts:1151,1203,1379,1545</code></p>
+    </div>
+    <div class="top-card"><span class="rank">2</span>
+      <h4>流式 delta 每个 token 被深拷贝 3 次</h4>
+      <p>append 时 <code>snapshotJsonValue</code> + <code>deepFreeze</code>，分发后 persistence 又 <code>structuredClone</code>，落盘 coordinator 再全批快照一次。事件在 append 处已冻结，persistence 可直接共享引用；chunk 类事件可轻量校验。</p>
+      <p style="margin-top:6px"><code>core/session/src/index.ts:612,625</code> · <code>session-persistence/write-behind.ts:47</code> · <code>coordinator.ts:698</code></p>
+    </div>
+    <div class="top-card"><span class="rank">3</span>
+      <h4>PTY scrollback 每个 chunk 做 O(4MB) 全量扫描</h4>
+      <p><code>BoundedTextBuffer.append</code> 每次 chunk 对整个缓冲 <code>split('\n')</code>，<code>utf8Tail</code> 用 <code>Array.from</code> 全量拆码点。构建类命令高速输出时 CPU 被输出泵吃满——全库唯一真正的 O(n²)。改环形缓冲 + 尾部字节回退找 UTF-8 边界。</p>
+      <p style="margin-top:6px"><code>packages/terminal/terminal-bash/src/session.ts:31-67</code></p>
+    </div>
+    <div class="top-card"><span class="rank">4</span>
+      <h4>单次工具结果被深拷贝 3–4 遍</h4>
+      <p><code>createSuccessResult</code> 对结果连续 snapshot 三次，<code>finishScheduledExecution</code> 又两次。<code>canonicalResults</code> 已能识别"已归一"结果，finish 阶段对 canonical 结果直接短路即可。大输出工具（read/bash）每条结果都在付这笔税。</p>
+      <p style="margin-top:6px"><code>packages/core/tools/src/index.ts:1792-1822,1630-1645</code></p>
+    </div>
+    <div class="top-card"><span class="rank">5</span>
+      <h4>聊天长列表无虚拟化，回翻只增不减</h4>
+      <p><code>ChatView</code> 对 <code>order.map</code> 全量渲染；分页只控制拉取不控制保留，<code>loadOlder</code> 不断 prepend 且永不裁剪。长会话重度回翻后，每次 append 的 reconcile 和内存线性上涨。</p>
+      <p style="margin-top:6px"><code>packages/client/ui-chat/src/client/chat/ChatView.tsx:595-614</code> · <code>session-controller/.../session.ts:413-434</code></p>
+    </div>
+  </div>
+  <div class="theme-note">
+    <b>系统性主题：</b>五个关键发现里三个是"重复克隆/重建"。这个代码库已经用 deep-freeze + 事件溯源解决了大部分状态一致性问题，但冻结前的防御性拷贝被叠加使用——<b>deep-freeze 本身就是所有权契约，冻结后共享引用是安全的</b>。把"snapshot + freeze"成对出现的调用点改为"冻结即转移所有权"，可以一次性消掉最大一类开销。
+  </div>
+</section>
+
+<!-- ================= 性能问题 ================= -->
+<section id="perf">
+  <h2 class="sec">性能问题（全部发现）</h2>
+  <p class="secdesc">按严重度分组，标注所属分区与代码证据。</p>
+  <div class="filters" id="perfFilter">
+    <button class="on" data-f="all">全部</button>
+    <button data-f="high">高</button>
+    <button data-f="med">中</button>
+    <button data-f="low">低</button>
+  </div>
+
+  <div class="finding high" data-sev="high"><div class="fhead"><span class="badge high">高</span><span class="badge zone">① 核心设施</span><span class="title">工具注册表 view() 无缓存，每次解析重建全量 Map/Set</span></div>
+    <p>每次调用沿 scope 链重建 inherited/visible Map 与两个 Set，并逐层跑 <code>admits()</code> 过滤。一次工具调用重复触发 5 次以上（createExecution、dispatchToolBody、postExecute、normalizeDispatchResult、executionMode 并行调度），外部 <code>timeout-policy</code> 每次包装再触发一次。</p>
+    <p><code>packages/core/tools/src/index.ts:1151</code> <code>:1203</code> <code>:1379</code> <code>:1545</code> <code>:1767</code> <code>:1836</code> <code>:1276</code></p>
+    <p class="fix"><code>core/scope/src/store.ts:167</code> 的 <code>ScopedLayers.onChange</code> 已有变更通知，可按 registry generation 缓存 per-scope ToolView。</p>
+  </div>
+
+  <div class="finding high" data-sev="high"><div class="fhead"><span class="badge high">高</span><span class="badge zone">② 模型会话</span><span class="title">流式 chunk 热路径上每个 delta 约 3 次全量深拷贝</span></div>
+    <p>每个 token 级 delta：append 内 <code>snapshotJsonValue</code> 深拷贝校验 + <code>deepFreeze</code>；事件分发后 persistence 层 <code>structuredClone(event)</code>；落盘 <code>coordinator.append()</code> 再 <code>snapshotJsonValue(events)</code> 全批快照。delta 事件量极大（日志存数百条近同事件行）。</p>
+    <p><code>packages/core/session/src/index.ts:612,625</code> · <code>session-persistence/src/write-behind.ts:47</code> · <code>coordinator.ts:698</code></p>
+    <p class="fix">append 处已 deepFreeze 的事件可直接共享引用；chunk 类事件走轻量校验，冻结推迟到 <code>assistant/message</code> 汇总。</p>
+  </div>
+
+  <div class="finding high" data-sev="high"><div class="fhead"><span class="badge high">高</span><span class="badge zone">③ 执行层</span><span class="title">PTY scrollback 缓冲每 chunk 做 O(cap) 全量扫描 + 每码点分配</span></div>
+    <p>每次输出 chunk 对整个缓冲（默认上限 4MB）执行 <code>value += text</code>、<code>split('\n')</code>，<code>utf8Tail</code> 用 <code>Array.from</code> 把全缓冲拆成单字符数组逐字符 <code>Buffer.byteLength</code>。250 chunk/s 时每秒数百次 4MB 级扫描。</p>
+    <p><code>packages/terminal/terminal-bash/src/session.ts:54-67</code> <code>:31-43</code> · 上限定义 <code>config.ts:92</code></p>
+    <p class="fix">按行索引的环形缓冲；<code>utf8Tail</code> 从尾部按字节回退找 UTF-8 边界。</p>
+  </div>
+
+  <div class="finding high" data-sev="high"><div class="fhead"><span class="badge high">高</span><span class="badge zone">① 核心设施</span><span class="title">单次工具结果被深拷贝 3–4 遍</span></div>
+    <p><code>createSuccessResult</code> 对同一结果做 <code>snapshotToolValue</code> + <code>snapshotProjection</code>×2 + <code>materializeFinalResult</code>；<code>finishScheduledExecution</code> 对 canonical 结果再 <code>materializeFinalResult</code> 两次（每次内部 snapshot + deepFreeze）。大输出工具每条结果 3× 全量深拷贝。</p>
+    <p><code>packages/core/tools/src/index.ts:1792-1822</code> <code>:1630-1645</code> <code>:634-640</code></p>
+    <p class="fix"><code>canonicalResults</code>(<code>:1783</code>) 已识别"已归一"结果，finish 阶段对 canonical 直接短路重复 snapshot。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">① 核心设施</span><span class="title">PTC 每次执行 run_code 深拷贝全部工具 schema 只为取名字</span></div>
+    <p><code>registry.schemas(exec.agent)</code> → <code>schemaOf(detach=true)</code> 对每个工具 parameters 全量 <code>snapshotJsonValue</code>，循环体只读 <code>schema.name</code>。</p>
+    <p><code>packages/core/tools/src/ptc.ts:613</code> · <code>index.ts:1233,1255</code></p>
+    <p class="fix">改用 <code>view(scope).visible.keys()</code>。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">① 核心设施</span><span class="title">system-prompt 每步 assemble 都 structuredClone 全部工具 parameters</span></div>
+    <p>工具 schema 只在 tools/change 时变，但 <code>agent.ts</code> 每个步骤（含 buildRequest 每次循环）都调 <code>assemble()</code>，其中 <code>structuredClone(parameters)</code> 重复执行。</p>
+    <p><code>packages/core/system-prompt/src/index.ts:549</code> · <code>agent.ts:237,348</code></p>
+    <p class="fix">装配结果按 registry generation 记忆化。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">① 核心设施</span><span class="title">session/events getter 追加后每次访问全量复制日志</span></div>
+    <p>每次 append 后 <code>eventsSnapshot = undefined</code>，下次 <code>session.events</code> 访问即 <code>[...this.log]</code> O(n) 复制。回调里的消费方（如 <code>agent-instructions</code> 的 <code>stepIsOpen</code>）反复读会形成 O(n²)。</p>
+    <p><code>packages/core/session/src/index.ts:557-560,642</code></p>
+    <p class="fix">提供增量游标 API（如 <code>eventsSince(seq)</code>）替代整表快照读取。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">② 模型会话</span><span class="title">会话恢复全量反序列化且重复拷贝</span></div>
+    <p>JSONL 全文件解析 → persistence 层把整个 log <code>structuredClone</code> 一遍 → Session 构造器 seed 再逐事件 snapshot。<code>core/session</code> 已有零拷贝 <code>seedSource:'persistence'</code> / ownership-transfer 机制，恢复路径未用。</p>
+    <p><code>session-persistence/src/index.ts:195-196</code> · <code>core/session/src/index.ts:517</code> · <code>session-persistence-jsonl/src/index.ts:206</code></p>
+    <p class="fix">恢复路径统一走 ownership-transfer；长会话考虑惰性 hydrate。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">② 模型会话</span><span class="title">token-meter 每次 measure 全表面重定价并 structuredClone 全部节点</span></div>
+    <p>每 call O(surface) 重定价 + anchor 表面再定价 + <code>structuredClone</code> 整个测量结果；compaction 一次事务内多次 measure，长会话下线性叠加。</p>
+    <p><code>packages/llm/token-meter/src/index.ts:135,144,165</code> · <code>compaction-basic/src/region.ts:346,402,430</code></p>
+    <p class="fix">route 未变时缓存每节点定价，仅增量计算 delta。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">③ 执行层</span><span class="title">Windows 终止路径用同步 spawnSync('taskkill') 阻塞事件循环</span></div>
+    <p>每次 terminate()（超时/abort/后台 kill/teardown）都在事件循环上同步执行 taskkill（数十至上百 ms），多 agent 并发取消时所有工具执行被串行阻塞。</p>
+    <p><code>packages/subprocess/subprocess-local/src/spawn.ts:276-282</code> · <code>windows-inspector.ts:144-149</code></p>
+    <p class="fix">异步 spawn + fire-and-forget，或用 <code>win32-process</code> 已有的 FFI <code>TerminateProcess</code> 路径。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">③ 执行层</span><span class="title">listDirectory 对每个子项串行 2+ 次 syscall</span></div>
+    <p><code>readdir(withFileTypes)</code> 已返回 dirent 类型，循环内仍对每项串行 realpath + stat（bigint），大目录下 2N 次以上串行 syscall，且任一子项失败中断整个列表。</p>
+    <p><code>packages/fs/fs-local/src/fsio.ts:303-319</code> <code>:164-193</code></p>
+    <p class="fix">dirent 类型短路、<code>Promise.all</code> 并行、必要时单次 lstat。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">④ 客户端 API</span><span class="title">store 持久化绕过 rAF 批量，每次 setState 同步全量序列化写 localStorage</span></div>
+    <p>原 store 已有 rAF 一帧合 N 次变更的 flush，但持久化监听直接挂原始 store，每次 setState 同步 <code>JSON.stringify</code> 整个状态并写 localStorage。</p>
+    <p><code>packages/client/store/src/index.ts:159-162,104-121,114</code></p>
+    <p class="fix">持久化也走 rAF 批量，或改为 idle 回写。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">④ 客户端 API</span><span class="title">聊天长列表无虚拟化，DOM/内存随回翻无限增长</span></div>
+    <p><code>ChatView</code> 全量渲染 <code>order.map</code>；分页只控制拉取不控制保留，已加载页永不裁剪，事件窗口、nodes Map、DOM 随回翻线性增长。</p>
+    <p><code>packages/client/ui-chat/src/client/chat/ChatView.tsx:595-614,136-154</code> · <code>session-controller/src/client/sessions/session.ts:413-434</code></p>
+    <p class="fix">渲染窗口虚拟化，或对窗口头部做淘汰（配合已有 <code>historyIncomplete</code> 标记）。</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">⑤ 外围扩展</span><span class="title">schedule 每次唤醒全量重放会话事件流</span></div>
+    <p>每次 agent 活动触发 <code>requestDrive</code>，其中 <code>readFolded()</code> 被调两次、每次对全部事件做 O(n) 线性 fold。长会话 + 常驻定时任务时唤醒成本随日志增长。</p>
+    <p><code>packages/schedule/schedule/src/runtime.ts:244,258,206-218,102-128</code> · <code>domain.ts:575-589</code></p>
+    <p class="fix">增量 fold 快照（缓存上次 fold 结果 + 游标）。</p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">② 模型会话</span><span class="title">创建会话的冲突探测全量读日志</span></div>
+    <p><code>loadStored(meta.id)</code> 完整解析事件只为判断存在性；轻量钩子 <code>readStoredRevision</code> 已存在未用。<code>coordinator.ts:676</code>（钩子见 <code>:152</code>）</p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">② 模型会话</span><span class="title">前缀比对逐事件两次 JSON.stringify</span></div>
+    <p><code>seedCoversPrefix</code>（HMR/收养路径）对每个事件做两次序列化字符串比较，可用引用相等或 seq + 浅比较。<code>coordinator.ts:268-274</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">② 模型会话</span><span class="title">session-query 单会话读取先列全部会话</span></div>
+    <p>单个 <code>load</code> 先 <code>listPersisted</code> 列出所有会话 header 再查找；<code>snapshotLive</code> 每次读工具调用对整个 log 深克隆。<code>session-query/src/corpus.ts:98,292-297</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">③ 执行层</span><span class="title">grep 渲染路径重复计算 retention 两次</span></div>
+    <p><code>render</code> 与 <code>presentationMeta</code> 各自调用 <code>retainGrepMatches</code>，每次对全部 match 重建 TextRetainer 逐行 preview，纯重复。<code>tool-fs-search/src/grep.ts:314,317</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">③ 执行层</span><span class="title">后台输出轮询每次全量 Buffer.concat tail</span></div>
+    <p><code>readFrom</code> 每次调用 concat 整个 in-memory tail（cap 64KB），被 <code>readOutput</code> 高频轮询。单次代价可控，高频下是无谓重复拼接。<code>subprocess-local/src/spawn.ts:207-218</code> · <code>bash-local/src/index.ts:289-291</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">① 核心设施</span><span class="title">repeat-tool-reminder 每工具调用两次 JSON.stringify</span></div>
+    <p><code>sortJsonValue</code> + canonical 与 key 各一次 stringify，可合并为一次。<code>guard/repeat-tool-reminder/src/index.ts:194-195</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">① 核心设施</span><span class="title">fork seed 先全量 slice 再 findLast</span></div>
+    <p><code>_forkSeed</code> 先 <code>events.slice(0, boundary+1)</code> 全量复制再 <code>findLast</code>，应从 boundary 反向扫描。<code>core/session/src/index.ts:1126-1127</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">④ 客户端 API</span><span class="title">流多路复用服务器单连接串行写，慢客户端队头阻塞</span></div>
+    <p>所有逻辑流共享一条 writes promise 链，逐帧 stringify + await；同一 WebSocket 上任一慢消费流推迟其它流，且无帧合并。天然背压是优点，批量是余量。<code>api/gateway/src/stream-server.ts:164-183,147-150</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">⑤ 外围扩展</span><span class="title">skill-filesystem 缺失根目录回退 stat 轮询 + isLive 全量扫描 roots</span></div>
+    <p><code>fs.watchFile</code>（周期 stat 轮询）监听不存在的 skill root，每个缺失 root 常驻一个定时器；<code>isLive()</code> 用数组 <code>includes</code> O(n) 查 roots。<code>skill-filesystem/src/index.ts:456-459,436-447</code> · <code>schedule/src/runtime.ts:160-163</code></p>
+  </div>
+</section>
+
+<!-- ================= 设计问题 ================= -->
+<section id="design">
+  <h2 class="sec">设计优雅度问题</h2>
+  <p class="secdesc">Ousterhout 深模块视角：接口是否窄、复杂度是否被隐藏、抽象是否泄漏。本区问题整体偏轻。</p>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">① 核心设施</span><span class="title">工具执行状态散落在 5 张 WeakMap 旁表</span></div>
+    <p><code>deferredContexts / concludingExecutions / cancellationStates / contentFinalizers / canonicalResults</code> 五张弱映射以同一批 exec 对象为键，缺一条就抛 "invariant violated"，同样的防御代码重复四处。一次执行的生命周期事实应是 <code>createExecution</code> 里创建的单一 <code>ExecutionState</code> 对象随 exec 传递——五处 getter 全部消失。</p>
+    <p><code>packages/core/tools/src/index.ts:805,807,809,811,1783</code>（防御重复 <code>:1512,1520,1534,1579</code>）</p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">① 核心设施</span><span class="title">tools/src/index.ts 1945 行 God 文件</span></div>
+    <p>注册表、四阶段调度管线、PTC 布线、ts/py SDK 渲染转发、presentation re-export 挤在一个文件。<code>ToolRuntimeScheduler</code> 已是良好接缝但实现同居一文件。对比 session 包按 surface/chunk-rows/json 切分得当——拆分范式库内现成。</p>
+    <p><code>packages/core/tools/src/index.ts</code></p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">①② 两区</span><span class="title">Session 抽象泄漏存储布局关注</span></div>
+    <p><code>firstLiveSeq</code> 与 <code>header.seedLength</code> 的语义差异靠 20 行 JSDoc 辩护，还要求消费方"找最后一个 session/end-seed 事件而非相信该 seq"；<code>header.cwd</code> 强制绝对路径的理由直说是"storage backends 依赖它"；纯存储编码 <code>chunk-rows.ts</code> 住在 core/session。header 对 Session 应是 opaque metadata，这些应归属持久化侧。</p>
+    <p><code>core/session/src/index.ts:448-470,459-464,112-116,825</code></p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">② 模型会话</span><span class="title">HTTP 错误→稳定错误码的映射在两个 LLM 适配器重复且已漂移</span></div>
+    <p><code>llm-deepseek</code> 靠状态码分类，<code>llm-pi-ai</code> 靠消息正则判断 quota/rate-limit——同一语义两套判定口径。应上收为 <code>dsh-llm</code> 共享的错误规范化模块，适配器只贡献传输差异。</p>
+    <p><code>packages/llm/llm-deepseek/src/adapter.ts:332-344</code> · <code>llm-pi-ai/src/stream.ts:43-44</code></p>
+  </div>
+
+  <div class="finding med" data-sev="med"><div class="fhead"><span class="badge med">中</span><span class="badge zone">③ 执行层</span><span class="title">三个 out-of-process subagent provider 平行重复同一生命周期骨架</span></div>
+    <p>acp / claude-code / codex 三个 provider 各自实现同构的 failureDiagnostic / RunFailure / StartupFailure / dispose / textTask / thrown，<code>DEFAULT_DISPOSE_GRACE_MS = 3000</code> 三处独立声明，dispose 阶梯逻辑三份。<code>windowsProcessTree</code> 已用 jscpd:ignore 承认镜像——重复感知存在但 provider 层未收敛。</p>
+    <p><code>subagent-acp/src/run.ts:82-85,117-145,192</code> · <code>subagent-claude-code/src/run.ts:40,80-97,269</code> · <code>subagent-codex/src/run.ts:35,86-123,189</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">④ 客户端 API</span><span class="title">wire 协议无版本协商</span></div>
+    <p>connection/gateway/stream-protocol 全线无 protocol version 字段，Client/Host 错配版本时只靠 envelope 校验抛错，无优雅降级。建议 generation 握手帧中加入协议版本。<code>packages/client/connection/</code> 全线（grep protocolVersion 零命中）</p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">④ 客户端 API</span><span class="title">ui-* 子包约 40 个：边界清晰但粒度过细、样板重复</span></div>
+    <p>每个小 feature（如 ui-brand-official）都承担全套包结构（README/contract/invariant/index 双入口），跨包依赖面大，改动一处常需穿透多包 contract。slot 授权模型本身很严谨。</p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">④ 客户端 API</span><span class="title">ChatNodeSeat 职责过重、派生链脆弱</span></div>
+    <p>单组件 5+ selector 订阅 + 布局派生 + 渲染路由；订阅整个可变 nodes store（靠对象身份恒定不触发重渲染），processLayout 以恒定引用为 useMemo 依赖，正确性依赖外部 touch 信号——靠约定维持的失效机制，易被演进打破。<code>ui-chat/src/client/chat/ChatNodeSeat.tsx:80-225,97,110-115</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">③ 执行层</span><span class="title">workflow host 终止状态由 4 个重叠标志构成</span></div>
+    <p><code>settled / terminalClaimed / cancelReason / workerDeathObserved</code> 的偏序关系只由注释证明，新增终止源需同时推演四标志组合。可合并为单一终端状态枚举 + 原因。<code>workflow-worker-thread/src/host.ts:106-110,495-516</code></p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">③ 执行层</span><span class="title">取消/超时的"原因分类"每工具自行实现</span></div>
+    <p>统一错误协议做得好（HarnessError + 稳定 code），但"谁拥有 deadline"每工具自行分类（bash-local 的 deadline/timeoutOf、search-core 三时点自查 aborted）。应把 deadline 归属与 abort 分类下沉到 ctx.subprocess / tools 公共层，否则新增工具易漏 spawn 创建期的 abort 重查 race。</p>
+  </div>
+
+  <div class="finding low" data-sev="low"><div class="fhead"><span class="badge low">低</span><span class="badge zone">①⑤ 两区</span><span class="title">重复样板三处 + 默认值两处</span></div>
+    <p>"resolve snapshot → try/catch → 容错 async rejection"事件分发循环在 session/tools/agent-loop 三处手写，应下沉到 cordis 层；credentials-local 的 Schemastery 默认值与 resolveSpec 各写一份，漂移时两路径静默不一致。<code>session/src/index.ts:375-397</code> · <code>credentials-local/src/index.ts:517-522,88-94</code></p>
+  </div>
+</section>
+
+<!-- ================= 亮点 ================= -->
+<section id="good">
+  <h2 class="sec">值得保持的亮点</h2>
+  <p class="secdesc">这些设计是这个代码库的"资产"，重构时应作为范式参照而非被顺手破坏。</p>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">② 模型会话</span><span class="title">PersistenceBackend：教科书级深模块</span></div>
+    <p>六个最小原语收拢全部复杂度：buffering、序列化、崩溃修复、per-id 串行化、有界 write-behind（默认 200ms 批写，失败保留批次重放）。持久化纯追加，无"每条消息全量重写"；JSONL 侧 zstd 独立帧 + chunk 行打包（宣称约 56× 压缩）。<code>coordinator.ts:127-218,1091-1114</code> · <code>write-behind.ts:31,139-158</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">② 模型会话</span><span class="title">compaction 事务：正确性与省钱同时照顾</span></div>
+    <p><code>compaction/start</code> 事件即持久化锁；summary 必须严格小于被替换 span 才允许提交（双重 stability check）；重放输入被构造成上一请求的真实 KV-cache 前缀——把"摘要调用"变成 provider 缓存命中。全库最优雅的一段。<code>compaction-basic/src/region.ts:154-256,383-388,498-524</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">① 核心设施</span><span class="title">ScopedLayers 的 effect 归属模型</span></div>
+    <p>注册与作用域可见性、fiber 生命周期、undo 回收统一挂在 <code>ctx.effect</code>，空层自动 GC；整个 registries 族零泄漏且语义一致。状态"集中可控"的范本。<code>core/scope/src/store.ts:226-266</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">① 核心设施</span><span class="title">output-retention：两个类吃掉全部复杂度</span></div>
+    <p>窄接口（push/finish/notice），内部消化 UTF-8 边界、滑动窗口内存上限、字节精确 omission，明确把"恢复话术"留给工具层。单一职责与信息隐藏俱佳。<code>util/output-retention/src/index.ts:247-346</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">③ 执行层</span><span class="title">OutputCollector 有界 tail + spill 与 ripgrep 全面委托</span></div>
+    <p>in-memory 保 LAST 64KB 诊断尾（错误聚在尾部的显式 rationale），溢出全量落 spill（封顶 64MB），spill 目录 0700、openSync 'wx' 0600 防 symlink planting，失败撤回 spillPath 广告而非谎报。搜索工具纯 argv spawn ripgrep、<code>--no-config</code> 防配置注入、VCS 目录用双 negated glob 遍历期剪枝。<code>subprocess-local/src/spawn.ts:104-251,89-92</code> · <code>tool-fs-search/src/search-core.ts:218-282,191-196</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">③ 执行层</span><span class="title">SubagentContinuationManager：最复杂的模块反而设计最清晰</span></div>
+    <p>residency 状态从 Agent 静止性 + ownedChildren 派生而非维护第二状态机；所有 race 有显式同步 cutoff；取消 top-down 传播与 child-first 释放分离；结算通知刻意放在释放所有权之前（注释给出反例时序）。每个决策的 why 写在现场，可审计性极高。<code>subagent/src/continuation.ts:159-166,1354-1363,1436-1448</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">⑤ 外围扩展</span><span class="title">credentials-local 安全设计 + 实验包纪律机制化</span></div>
+    <p>启动与每次重载前校验 0600、密钥永不入日志（YAML 错误只报 code + 行列）、跨进程文件锁 + 写前 reconcileFromDisk、分层信任语义（env > 受管文件 > .env）并拒绝写入会被遮蔽的 key。experimental 边界由 workspace gate 机器强制（实测零违规），且实验代码质量与正式包一致。<code>credentials-local/src/index.ts:127-146,159-164,794-801</code> · <code>experimental/AGENTS.md</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">④ 客户端 API</span><span class="title">React-free store 引擎 + 增量 Markdown 解析 + 推模型投影</span></div>
+    <p>zustand vanilla + immer + rafFlush（一帧 N 次变更 1 次通知），全栈唯一 hook 构造点保证订阅粒度一致；IncrementalMarkdownParser 冻结已完结块、每 chunk 只重解析尾部；host 唯一计算站点 + 客户端"高 seq 胜"水位去重 + 指数退避重连后 baseline 重播种。<code>client/store/src/index.ts:104-141</code> · <code>ui-primitives/src/markdown/MarkdownText.tsx:54-120</code> · <code>session-controller/.../projection-store.ts:133-158</code></p>
+  </div>
+
+  <div class="finding good"><div class="fhead"><span class="badge good">亮点</span><span class="badge zone">② 模型会话</span><span class="title">事件溯源 + 严格增量 fold</span></div>
+    <p><code>deriveMessages / requestHeader / requestContext</code> 均只投影新节点；deep-frozen log 让派生消息安全共享、免二次克隆；迭代式单遍 walk 同时完成校验与快照，杜绝"getter 校验与存储值不一致"类隐蔽 bug。<code>core/session/src/index.ts:655-745</code></p>
+  </div>
+</section>
+
+<!-- ================= 方法论 ================= -->
+<section id="method">
+  <h2 class="sec">方法论与局限</h2>
+  <div class="finding" style="border-left:4px solid var(--border);">
+    <p><b>审查方式：</b>按 dsh-plugin-dev 技能规范先执行环境探测（Node 24.14.0 达标，<code>DSH_PROJECT_PATH</code> 未设置，以本地 checkout 源码为准），随后对 monorepo 做 5 分区并行深读：先读各包 README 确立定位，再进入 src 源码逐文件核对。全部发现均带真实文件路径与行号，行号在报告生成时与 commit <code>42dff72b</code>（2026-08-28）对齐。</p>
+    <p><b>局限：</b>本次为静态深读，未运行性能基准（仓库自带 <code>vitest.web.perf.config.ts</code> 与 <code>BENCHMARK.md</code>，可作为下一步验证手段）；experimental/extensions 区为抽查而非全读；"高严重度"指影响面 × 证据强度，实际收益需以 profile 为准。建议修复顺序：先做关键发现 1/2/4（同属"重复克隆"主题，可一次重构收敛），再单独处理 PTY 缓冲（算法更换）与聊天虚拟化（UI 工程）。</p>
+  </div>
+</section>
+
+<footer>
+  DeepSeek Harness 源码审查报告 · 生成于 2026-08-29 · 基于 commit 42dff72b (v0.1.2-alpha.1) · 静态深读 5 分区 / 247 包目录 / 约 134 万行 TS · 所有行号引用格式 <code>包路径/文件:行</code>
+</footer>
+
+</div>
+
+<script>
+  document.querySelectorAll('.filters button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filters button').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      const f = btn.dataset.f;
+      document.querySelectorAll('#perf .finding').forEach(el => {
+        el.style.display = (f === 'all' || el.dataset.sev === f) ? '' : 'none';
+      });
+    });
+  });
+</script>
+</body>
+</html>
