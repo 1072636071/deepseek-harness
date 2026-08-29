@@ -1138,8 +1138,17 @@ export class SessionStore extends Service {
         'INVALID_BOUNDARY',
       )
     }
-    const lastTurnBoundary = events.slice(0, boundary + 1)
-      .findLast(event => event.type === 'turn/start' || event.type === 'turn/end')
+    // Reverse scan from the boundary for the last turn delimiter — no full
+    // prefix slice just to run findLast over it. Long sessions fork from near
+    // their end, so this touches a handful of events instead of the prefix.
+    let lastTurnBoundary: SessionEvent | undefined
+    for (let index = boundary; index >= 0; index -= 1) {
+      const event = events[index]
+      if (event !== undefined && (event.type === 'turn/start' || event.type === 'turn/end')) {
+        lastTurnBoundary = event
+        break
+      }
+    }
     if (lastTurnBoundary?.type === 'turn/start') {
       throw new SessionForkError(
         `fork boundary ${boundary} in session "${session.id}" ends inside open turn ${lastTurnBoundary.data.turn}`,
