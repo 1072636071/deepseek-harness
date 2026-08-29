@@ -579,32 +579,58 @@ export function foldScheduleEvents(
   if (!Number.isSafeInteger(seedLength) || seedLength < 0 || seedLength > events.length) {
     throw new ScheduleLogError('schedule seedLength must be within the supplied event log')
   }
-  const active = new Map<ScheduleIdType, ScheduleRecord>()
-  const seen = new Set<ScheduleIdType>()
-  for (const event of events.slice(seedLength)) {
-    if (event.type !== 'schedule/change') continue
+  const state = emptyScheduleFold()
+  applyScheduleEvents(state, events, seedLength, events.length)
+  return snapshotScheduleFold(state)
+}
+
+/** Mutable fold accumulator behind {@link foldScheduleEvents} and its incremental driver. */
+export interface ScheduleFoldState {
+  active: Map<ScheduleIdType, ScheduleRecord>
+  seen: Set<ScheduleIdType>
+}
+
+/** An empty fold accumulator for a session-local suffix. */
+export function emptyScheduleFold(): ScheduleFoldState {
+  return { active: new Map(), seen: new Set() }
+}
+
+/**
+ * Apply `events[from..to)` onto the accumulator. Purely incremental: the same
+ * per-event validation the whole-log fold performs, so an incrementally
+ * maintained state is indistinguishable from a full refold.
+ */
+export function applyScheduleEvents(
+  state: ScheduleFoldState,
+  events: readonly SessionEvent[],
+  from: number,
+  to: number,
+): void {
+  for (let index = from; index < to; index += 1) {
+    const event = events[index]
+    if (event === undefined || event.type !== 'schedule/change') continue
     const change = decodeScheduleChange(event.data)
     switch (change.operation) {
       case 'create':
-        if (seen.has(change.schedule.id)) {
+        if (state.seen.has(change.schedule.id)) {
           throw new ScheduleLogError(`schedule id ${JSON.stringify(change.schedule.id)} was reused`)
         }
-        seen.add(change.schedule.id)
-        active.set(change.schedule.id, change.schedule)
+        state.seen.add(change.schedule.id)
+        state.active.set(change.schedule.id, change.schedule)
         break
       case 'delete':
-        if (!active.delete(change.id)) {
+        if (!state.active.delete(change.id)) {
           throw new ScheduleLogError(`schedule delete targets inactive id ${JSON.stringify(change.id)}`)
         }
         break
       case 'dispatch': {
-        const record = active.get(change.id)
+        const record = state.active.get(change.id)
         if (record === undefined) {
           throw new ScheduleLogError(`schedule dispatch targets inactive id ${JSON.stringify(change.id)}`)
         }
         const next = dispatchedRecord(record, change)
-        if (next === undefined) active.delete(change.id)
-        else active.set(change.id, next)
+        if (next === undefined) state.active.delete(change.id)
+        else state.active.set(change.id, next)
         break
       }
       /* v8 ignore next 3 -- decodeScheduleChange returns a closed operation union. */
@@ -614,9 +640,13 @@ export function foldScheduleEvents(
       }
     }
   }
+}
+
+/** Freeze one point-in-time view of the accumulator. */
+export function snapshotScheduleFold(state: ScheduleFoldState): FoldedSchedules {
   return Object.freeze({
-    active: Object.freeze([...active.values()]),
-    seenIds: Object.freeze([...seen]),
+    active: Object.freeze([...state.active.values()]),
+    seenIds: Object.freeze([...state.seen]),
   })
 }
 

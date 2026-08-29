@@ -565,6 +565,21 @@ export class Session {
   }
 
   /**
+   * Lazily iterate the event log newest-first. Zero up-front allocation —
+   * unlike `[...events].reverse()` — so a backward scan that stops at the
+   * first match costs only the distance to that match, not the whole log.
+   * The log prefix is captured on the first pull (the generator is lazy): the
+   * append-only log keeps earlier entries stable, and events appended before
+   * that pull are not revisited mid-iteration.
+   */
+  *eventsReversed(): IterableIterator<SessionEvent> {
+    const log = this.log
+    for (let index = log.length - 1; index >= 0; index -= 1) {
+      yield log[index] as SessionEvent
+    }
+  }
+
+  /**
    * Append one typed event to the log and synchronously notify observers via
    * the store-owned, module-private publication hooks. The hot path never blocks
    * on I/O — persistence plugins buffer asynchronously. Once the event enters
