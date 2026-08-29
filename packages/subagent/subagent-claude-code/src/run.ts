@@ -18,6 +18,9 @@ import {
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import {
+  ProviderRunFailure,
+  providerFailureDiagnostic,
+  providerTextTask,
   settleRunResult,
   subprocessRunHandle,
   type SubagentResult,
@@ -36,8 +39,7 @@ import {
   ManagedClaudeCodeProcess,
 } from './process.ts'
 
-/** Default POSIX grace between subprocess termination tiers. */
-export const DEFAULT_DISPOSE_GRACE_MS = 3_000
+export { DEFAULT_DISPOSE_GRACE_MS } from '@deepseek-ai/dsh-subagent'
 
 /** Claude Code permission modes that cannot wait for a human response. */
 export const CLAUDE_CODE_PERMISSION_MODES = [
@@ -78,32 +80,21 @@ interface ClaudeCodeFailureFacts {
 }
 
 function failureDiagnostic(facts: ClaudeCodeFailureFacts): string {
-  const fields = [
-    'product: Claude Code',
-    `stage: ${facts.stage}`,
-    `category: ${facts.category}`,
-  ]
-  const exitCode = facts.outcome?.exitCode
-  if (exitCode !== null && exitCode !== undefined) {
-    fields.push(`exit code: ${exitCode}`)
-  }
-  const signal = facts.outcome?.signal
-  if (signal !== null && signal !== undefined) {
-    fields.push(`signal: ${signal}`)
-  }
-  return `Product subagent failure (${fields.join('; ')})`
+  return providerFailureDiagnostic({
+    label: 'Product subagent failure',
+    subject: 'product: Claude Code',
+    fields: [
+      ['stage', facts.stage],
+      ['category', facts.category],
+      ['exit code', facts.outcome?.exitCode],
+      ['signal', facts.outcome?.signal],
+    ],
+  })
 }
 
-class ClaudeCodeFailure extends Error {
-  constructor(
-    readonly facts: ClaudeCodeFailureFacts,
-    cause?: unknown,
-  ) {
-    super(
-      `subagent-claude-code: ${failureDiagnostic(facts)}`,
-      cause === undefined ? undefined : { cause },
-    )
-    this.name = 'ClaudeCodeFailure'
+class ClaudeCodeFailure extends ProviderRunFailure<ClaudeCodeFailureFacts> {
+  constructor(facts: ClaudeCodeFailureFacts, cause?: unknown) {
+    super('subagent-claude-code', facts, failureDiagnostic(facts), cause)
   }
 }
 
@@ -181,20 +172,7 @@ function isAborted(signal: AbortSignal): boolean {
  * @returns the exact text sequence as one SDK prompt.
  */
 export function textTask(prompt: readonly ContentBlock[]): string {
-  if (prompt.length === 0) {
-    throw new Error('subagent-claude-code: the one-shot task must contain only text blocks')
-  }
-  const texts: string[] = []
-  for (const block of prompt) {
-    if (block.type !== 'text') {
-      throw new Error('subagent-claude-code: the one-shot task must contain only text blocks')
-    }
-    texts.push(block.text)
-  }
-  if (texts.every(text => text.trim().length === 0)) {
-    throw new Error('subagent-claude-code: the one-shot task must not be empty')
-  }
-  return texts.join('')
+  return providerTextTask(prompt, 'subagent-claude-code').join('')
 }
 
 /**

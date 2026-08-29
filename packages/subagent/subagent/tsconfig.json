@@ -60,6 +60,9 @@
       "path": "../../typert/protocol"
     },
     {
+      "path": "../../subprocess/subprocess"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

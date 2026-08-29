@@ -8,7 +8,7 @@
  * @module dsh-llm-deepseek/adapter
  */
 
-import { attributionHeaders, contentHasImage, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, offloadedImageText, offloadRequestImagesWithPolicy, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, contentHasImage, LlmAdapter, LlmError, normalizeHttpFailureCode, offloadedImageText, offloadRequestImagesWithPolicy, ProviderRequestId, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {
   ContentBlock,
   GenerateOptions,
@@ -324,23 +324,18 @@ function requestId(headers: Headers): ReturnType<typeof ProviderRequestId> | und
 }
 
 /**
- * Map an HTTP status to a stable LlmError code.
+ * Map an HTTP status to a stable LlmError code — the shared
+ * {@link normalizeHttpFailureCode} classification, which owns the whole
+ * status-bearing verdict including the `HTTP_<status>` fallback.
  * @param status - status of a non-2xx provider response.
  * @param error - parsed provider error body, when available.
  * @returns the normalized harness error code.
  */
 export function httpErrorCode(status: number, error?: WireError['error']): string {
-  if (status === 401 || status === 403) return 'AUTH'
-  if (status === 413) return 'INVALID_REQUEST'
-  const detail = [error?.code, error?.type, error?.message].filter(Boolean).join(' ')
-  if (isQuotaExceededError(detail)) return QUOTA_EXCEEDED_CODE
-  if (status === 429) return 'RATE_LIMIT'
-  if (status === 400) {
-    if (isContextWindowExceededError(detail)) return CONTEXT_WINDOW_EXCEEDED_CODE
-    return 'INVALID_REQUEST'
-  }
-  if (status >= 500) return 'SERVER'
-  return `HTTP_${status}`
+  const detail = [error?.code, error?.type, error?.message]
+    .filter((field): field is string => typeof field === 'string')
+    .join(' ')
+  return normalizeHttpFailureCode({ status, detail })
 }
 
 /**
