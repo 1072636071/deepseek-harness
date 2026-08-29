@@ -2233,4 +2233,22 @@ describe('PersistenceCoordinator prefix collision guards', () => {
       .rejects.toThrow(/does not match this live session/)
     await ctx.fiber.dispose()
   })
+
+  it('probes a persisted-id collision through the revision hook, not a full log load', async () => {
+    const store: MemoryStore = new Map()
+    const m = meta('probe-revision')
+    store.set(m.id, { meta: m, events: [...oneTurnLog()] })
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(MemoryPersistence, { store })
+    const persistence = ctx.sessionPersistence as unknown as PersistenceBackend<never>
+    const loadSpy = vi.spyOn(persistence, 'loadStored')
+    const revisionSpy = vi.spyOn(persistence, 'readStoredRevision')
+
+    await expect(ctx.sessionPersistence.create(meta('probe-revision')))
+      .rejects.toThrow(/already has a persisted log on disk/)
+    expect(revisionSpy).toHaveBeenCalledTimes(1)
+    expect(loadSpy).not.toHaveBeenCalled()
+    await ctx.fiber.dispose()
+  })
 })

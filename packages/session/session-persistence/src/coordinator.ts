@@ -705,8 +705,9 @@ export class PersistenceCoordinator<TornMarker = unknown> {
     }
     // A persisted artifact under this id (in ANY scope) blocks creation: load/
     // resume identify a session by id alone, so a second artifact would make
-    // resume nondeterministic.
-    if (await this.backend.loadStored(meta.id) !== undefined) {
+    // resume nondeterministic. The revision read answers existence without
+    // parsing the stored event log.
+    if (await this.backend.readStoredRevision(meta.id) !== undefined) {
       throw new Error(`session "${meta.id}" already has a persisted log on disk; load/resume it instead of creating`)
     }
     // Pure lazy: record intent only. No artifact until the first append.
