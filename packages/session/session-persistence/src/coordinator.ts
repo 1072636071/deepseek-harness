@@ -15,7 +15,7 @@ import {
   snapshotJsonValue,
   snapshotSessionEvent,
 } from '@deepseek-ai/dsh-session'
-import type { Session, SessionEvent, SessionId, SessionHeader } from '@deepseek-ai/dsh-session'
+import type { Session, SessionEvent, SessionId, SessionHeader, SurfaceOp } from '@deepseek-ai/dsh-session'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type { BorrowedSessionSource, SessionInspection, SessionLocation } from './index.ts'
 import { SessionPersistenceNotFoundError } from './errors.ts'
@@ -264,12 +264,45 @@ async function settledErrors(promises: Iterable<Promise<unknown>>): Promise<unkn
   return errors
 }
 
+/** Whether one seed event reproduces one persisted event exactly. */
+function seedEventMatches(seedEvent: SessionEvent, event: SessionEvent): boolean {
+  // Fast path: a seed reused from the same backend load (zero-copy ownership
+  // transfer) holds the very same frozen objects.
+  if (seedEvent === event) return true
+  // Cheap rejection: stringify includes these fields, so a difference here
+  // settles the comparison without serializing anything.
+  if (seedEvent.seq !== event.seq || seedEvent.type !== event.type || seedEvent.time !== event.time) return false
+  if (seedEvent.data === event.data && surfaceMetaMatches(seedEvent, event)) return true
+  // Only events that survive the shallow checks still need a deep compare —
+  // the collision guard must not miss divergence at depth or in the surface
+  // metadata that rides outside `data`.
+  return JSON.stringify(seedEvent) === JSON.stringify(event)
+}
+
+type WithSurfaceMeta = SessionEvent & { sourceEventSeqs?: number[]; surfaceOp?: SurfaceOp }
+
+/**
+ * Whether the optional surface metadata (which lives beside `data`, so the
+ * data fast path does not see it) agrees by reference or shallow structure.
+ * Structural-but-distinct values fall through to the caller's stringify.
+ */
+function surfaceMetaMatches(seedEvent: SessionEvent, event: SessionEvent): boolean {
+  const seedMeta = seedEvent as WithSurfaceMeta
+  const meta = event as WithSurfaceMeta
+  if (seedMeta.surfaceOp !== meta.surfaceOp) return false
+  const seedSources = seedMeta.sourceEventSeqs
+  const sources = meta.sourceEventSeqs
+  if (seedSources === sources) return true
+  if (seedSources === undefined || sources === undefined || seedSources.length !== sources.length) return false
+  return seedSources.every((seq, index) => seq === sources[index])
+}
+
 /** Whether a live session seed reproduces a persisted prefix exactly. */
 function seedCoversPrefix(seed: readonly SessionEvent[], prefix: readonly SessionEvent[]): boolean {
   return prefix.length <= seed.length
     && prefix.every((event, index) => {
       const seedEvent = seed[index]
-      return seedEvent !== undefined && JSON.stringify(seedEvent) === JSON.stringify(event)
+      return seedEvent !== undefined && seedEventMatches(seedEvent, event)
     })
 }
 

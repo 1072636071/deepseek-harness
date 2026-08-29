@@ -2194,3 +2194,43 @@ describe('SessionPersistence service registration', () => {
     }
   })
 })
+
+describe('PersistenceCoordinator prefix collision guards', () => {
+  it('adopts a stored prefix under a content-identical (distinct-object) seed', async () => {
+    const store: MemoryStore = new Map()
+    const m = meta('adopt-identical', '/w')
+    store.set(m.id, { meta: m, events: [...oneTurnLog()] })
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(MemoryPersistence, { store })
+    // A fresh deep copy of the stored log as the live seed: the guard must
+    // accept it by content, not by object identity.
+    let live!: Session
+    await ctx.plugin(Object.assign((inner: Context) => {
+      live = inner.sessions.create(m.id, { seed: oneTurnLog(), meta: { cwd: '/w' } })
+    }, { inject: ['sessions'] }))
+    await expect(ctx.sessions.flush(live)).resolves.toBe(true)
+    await ctx.fiber.dispose()
+  })
+
+  it('rejects a seed that diverges from the stored prefix in surface metadata', async () => {
+    const store: MemoryStore = new Map()
+    const m = meta('adopt-surface-divergent', '/w')
+    store.set(m.id, { meta: m, events: [...oneTurnLog()] })
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(MemoryPersistence, { store })
+    // Same data content, but the user/message now cites seq 0 as a source —
+    // the guard must notice divergence that rides outside `data`.
+    const divergentSeed = oneTurnLog().map((event, index) => index === 1
+      ? { ...event, sourceEventSeqs: [0] }
+      : event)
+    let live!: Session
+    await ctx.plugin(Object.assign((inner: Context) => {
+      live = inner.sessions.create(m.id, { seed: divergentSeed, meta: { cwd: '/w' } })
+    }, { inject: ['sessions'] }))
+    await expect(ctx.sessions.flush(live))
+      .rejects.toThrow(/does not match this live session/)
+    await ctx.fiber.dispose()
+  })
+})
