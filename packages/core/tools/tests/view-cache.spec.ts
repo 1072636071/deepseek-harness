@@ -175,3 +175,22 @@ describe('per-scope view cache', () => {
     expect(seenDuringDispatch).toBe(before)
   })
 })
+
+describe('toolNames', () => {
+  it('matches the visible schema names exactly, including the PTC transport', async () => {
+    const ctx = await mount()
+    const { scope, key } = await mintAgentScope(ctx, 'a')
+    ctx.tools.register(tool('alpha'))
+    scope.ctx.tools.register(tool('beta'))
+
+    expect(ctx.tools.toolNames(key).sort()).toEqual(['alpha', 'beta'])
+    expect(ctx.tools.toolNames(key)).toEqual(ctx.tools.schemas(key).map(t => t.name))
+    expect(ctx.tools.toolNames().sort()).toEqual(['alpha'])
+
+    const restore = scope.ctx.tools.presentAs('ptc')
+    expect(ctx.tools.toolNames(key).sort()).toEqual(['alpha', 'beta', 'run_code'])
+    expect(ctx.tools.toolNames(key)).toEqual(ctx.tools.schemas(key).map(t => t.name))
+    restore()
+    expect(ctx.tools.toolNames(key).sort()).toEqual(['alpha', 'beta'])
+  })
+})

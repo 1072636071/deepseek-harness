@@ -667,6 +667,18 @@ export class ToolRuntime extends Service {
   }
 
   /**
+   * The tool names one scope sees — the keys of {@link get}/{@link schemas}'s
+   * view without projecting or cloning any schema payload. PTC binding
+   * enumeration needs only these names; cloning every parameters object for
+   * them was pure waste.
+   * @param scope - the viewing scope (the agent); omitted = the global view.
+   * @returns the visible tool names in view order.
+   */
+  toolNames(scope?: ScopeKey): string[] {
+    return [...this.view(scope).visible.keys()]
+  }
+
+  /**
    * Resolve the definition that MAY EXECUTE for a call, applying the mode
    * collapse at the operation boundary that owns it. The registry view
    * (`get`) is presentation-agnostic; here a MODEL-DIRECT call under `ptc`

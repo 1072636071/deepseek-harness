@@ -610,9 +610,9 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
       // restricted globals vanish) — the same view the SDK section declared,
       // so a program can bind exactly what its prompt promised; sub-dispatch
       // re-resolves per call through the same view (exec.agent threads down).
-      for (const schema of registry.schemas(exec.agent)) {
-        if (schema.name === RUN_CODE_NAME) continue
-        Object.defineProperty(functions, schema.name, { enumerable: true, value: binding(schema.name) })
+      for (const name of registry.toolNames(exec.agent)) {
+        if (name === RUN_CODE_NAME) continue
+        Object.defineProperty(functions, name, { enumerable: true, value: binding(name) })
       }
 
       try {

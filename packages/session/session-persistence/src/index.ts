@@ -192,7 +192,15 @@ export abstract class SessionPersistence extends Service {
       throw new Error('cannot prepare a session: SessionStore is not configured')
     }
     return SessionPreparation.create(sessions.prepare(id, {
-      seed: loaded.events.map(event => structuredClone(event)),
+      // Frozen events are immutable, so they transfer by reference —
+      // `seedSource: 'persistence'` freezes them in place, a no-op here — and
+      // cloning them would deep-copy every resumed event. The two-level frozen
+      // check is closed bottom-up by restore's full-graph deep freeze, so no
+      // mutable alias can survive; anything not frozen still falls back to
+      // cloning for producer isolation. The header stays cloned: load() may
+      // hand back a coordinator-owned live header object.
+      seed: loaded.events.map(event =>
+        Object.isFrozen(event) && Object.isFrozen(event.data) ? event : structuredClone(event)),
       meta: structuredClone(loaded.meta),
       seedSource: 'persistence',
     }))

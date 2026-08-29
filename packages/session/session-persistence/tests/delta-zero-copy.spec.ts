@@ -13,7 +13,7 @@ import type { PersistenceBackend, StoredPrefix } from '../src/index.ts'
 class RecordingBackend implements PersistenceBackend<never> {
   readonly name = 'session-persistence-recording'
   readonly supportsRawArtifacts = false
-  readonly batches: readonly SessionEvent[][] = []
+  readonly batches: SessionEvent[][] = []
   private readonly store = new Map<string, { meta: SessionHeader; events: SessionEvent[] }>()
 
   async loadStored(id: SessionId): Promise<StoredPrefix<never> | undefined> {
@@ -36,6 +36,11 @@ class RecordingBackend implements PersistenceBackend<never> {
     } else {
       existing.events.push(...events)
     }
+  }
+
+  async commitRepair(m: SessionHeader, _tornMarker: undefined, closers: readonly SessionEvent[]): Promise<void> {
+    const entry = this.store.get(m.id)
+    if (entry !== undefined) entry.events.push(...closers)
   }
 
   async materializeHeader(m: SessionHeader): Promise<void> {
@@ -71,17 +76,21 @@ describe('live delta persistence path', () => {
     // A token-level delta: session.append snapshots + deep-freezes its data
     // (the ONE necessary copy); the write-behind queue and the coordinator
     // must both retain that frozen event by reference.
-    session.append('assistant/chunk', { text: 'hello ' })
-    session.append('assistant/chunk', { text: 'world' })
+    session.append('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'hello ' } })
+    session.append('assistant/chunk', { turn: 1, step: 1, chunk: { type: 'text-delta', index: 0, text: 'world' } })
     await ctx.sessions.flush(session)
 
     const chunkSeqs = [1, 2]
     const delivered = backend.batches.at(-1)
     expect(delivered).toBeDefined()
     for (const seq of chunkSeqs) {
-      const live = session.events[seq]
+      const live = session.events[seq]!
       const persisted = delivered?.find(e => e.seq === seq)
-      expect(live.data).toEqual({ text: seq === 1 ? 'hello ' : 'world' })
+      expect(live.data).toEqual({
+        turn: 1,
+        step: 1,
+        chunk: { type: 'text-delta', index: 0, text: seq === 1 ? 'hello ' : 'world' },
+      })
       // The counting assertion: identity with the live log proves no further
       // deep copy happened after session.append materialized the event.
       expect(persisted).toBe(live)
@@ -93,7 +102,11 @@ describe('live delta persistence path', () => {
     const session = ctx.sessions.create(SessionId('negative'))
     session.append('turn/start', { turn: 1 })
     expect(() =>
-      session.append('assistant/chunk', { text: 'x' as never, bad: 1n as never }),
+      session.append('assistant/chunk', {
+        turn: 1,
+        step: 1,
+        chunk: { type: 'text-delta', index: 0, text: 1n as never },
+      }),
     ).toThrow(/non-JSON-serializable/)
     // The rejected event never enters the log nor the durable queue.
     expect(session.events).toHaveLength(1)

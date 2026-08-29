@@ -278,11 +278,11 @@ describe('SessionWriteBehind', () => {
 describe('SessionWriteBehind retention', () => {
   it('retains a deep-frozen event by reference and clones a mutable one', async () => {
     vi.useFakeTimers()
-    const batches: readonly SessionEvent[][] = []
+    const batches: SessionEvent[][] = []
     const controller = new SessionWriteBehind({
       maxDelayMs: 200,
       // Keep the batch reference (no copy here either) so element identity is observable.
-      write: async (events) => { batches.push(events) },
+      write: async (events) => { batches.push([...events]) },
       reportBackgroundFailure: vi.fn(),
     })
 
@@ -295,10 +295,10 @@ describe('SessionWriteBehind retention', () => {
     mutable.data.turn = 99
     await vi.advanceTimersByTimeAsync(200)
 
-    const [batch] = batches
+    const batch = batches.at(-1)
     expect(batch).toHaveLength(2)
-    expect(batch[0]).toBe(frozen)
-    expect(batch[1]).not.toBe(mutable)
-    expect(batch[1]).toEqual(expect.objectContaining({ seq: 1, data: { turn: 2 } }))
+    expect(batch![0]).toBe(frozen)
+    expect(batch![1]).not.toBe(mutable)
+    expect(batch![1]).toEqual(expect.objectContaining({ seq: 1, data: { turn: 2 } }))
   })
 })
