@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createConversationStore } from '../src/client/stores.ts'
 
 const KEY = 'dsh.conversation'
@@ -30,11 +30,12 @@ describe('createConversationStore', () => {
     expect(store.store.getSnapshot().viewRequest).toBeNull()
   })
 
-  it('persists per Session scope and clears the persisted value', () => {
+  it('persists per Session scope and clears the persisted value', async () => {
     const first = createConversationStore().create('sess-1')
     first.actions.setDraft('draft for one')
     first.actions.setView('chat')
-    expect(localStorage.getItem(`${KEY}.sess-1`)).not.toBeNull()
+    // Write-back is frame-batched; settle before reading the storage side.
+    await vi.waitFor(() => { expect(localStorage.getItem(`${KEY}.sess-1`)).not.toBeNull() })
     expect(localStorage.getItem(`${KEY}.sess-2`)).toBeNull()
 
     const restored = createConversationStore().create('sess-1')

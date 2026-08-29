@@ -8,7 +8,7 @@
  * Timeline projection and inclusive focus edge cases ride along.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createElement, type ComponentProps, type FC, type ReactNode } from 'react'
 import { bindSnapshotSelector, SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
@@ -462,7 +462,8 @@ describe('plugin registration', () => {
     expect(second.hooks.duration).toBe(first.hooks.duration)
     first.setActualDuration(true)
     expect(second.hooks.duration.getSnapshot()).toBe(true)
-    expect(localStorage.getItem('dsh.trajectory.duration')).toBe('true')
+    // Write-back is frame-batched; settle before reading the storage side.
+    await waitFor(() => { expect(localStorage.getItem('dsh.trajectory.duration')).toBe('true') })
     expect(localStorage.getItem(`dsh.trajectory.duration.${SID}`)).toBeNull()
   })
 
@@ -1262,7 +1263,7 @@ describe('timeline projection', () => {
 })
 
 describe('TrajectoryView state', () => {
-  it('persists the duration preference through the runtime snapshot-store seam', () => {
+  it('persists the duration preference through the runtime snapshot-store seam', async () => {
     const firstDuration = createTrajectoryDurationStore()
     const commonProps = {
       ...standaloneProps(NODES),
@@ -1279,7 +1280,8 @@ describe('TrajectoryView state', () => {
 
     expect(duration.getAttribute('aria-pressed')).toBe('false')
     fireEvent.click(duration)
-    expect(localStorage.getItem('dsh.trajectory.duration')).toBe('true')
+    // Write-back is frame-batched; settle before the rehydrating store below reads storage.
+    await waitFor(() => { expect(localStorage.getItem('dsh.trajectory.duration')).toBe('true') })
     first.unmount()
 
     const restoredDuration = createTrajectoryDurationStore()

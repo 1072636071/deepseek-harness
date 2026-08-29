@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Exercises Conversation persistence through the real SlotRegistry store axis. */
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
@@ -74,7 +74,8 @@ describe('Conversation state survives on its store seat', () => {
     const doomed = storeFor(b, 'conversation.session', sid('s1'))
     doomed.actions.setDraft('to be buried')
     doomed.actions.setView('chat')
-    expect(localStorage.getItem('dsh.conversation.s1')).not.toBeNull()
+    // Write-back is frame-batched; settle before asserting the storage side.
+    await vi.waitFor(() => { expect(localStorage.getItem('dsh.conversation.s1')).not.toBeNull() })
 
     await b.runtime.sessions.remove('s1')
 
