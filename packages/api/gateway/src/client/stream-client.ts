@@ -1,6 +1,7 @@
 /** Browser owner for the Gateway multiplexed Remote stream socket. */
 
 import {
+  parseRemoteStreamServerFrame,
   parseRemoteStreamServerMessage,
   REMOTE_STREAM_MUX_PATH,
   type RemoteStreamClientMessage,
@@ -222,8 +223,15 @@ export class RemoteStreamMuxClient {
     if (socket !== this.socket) return
     try {
       if (typeof data !== 'string') throw new Error('api gateway: Remote stream WebSocket requires text messages')
-      const frame = parseRemoteStreamServerMessage(data)
-      this.streams.get(frame.streamId)?.push(frame)
+      const message = parseRemoteStreamServerMessage(data)
+      if (message.type === 'batch') {
+        for (const text of message.frames) {
+          const frame = parseRemoteStreamServerFrame(text)
+          this.streams.get(frame.streamId)?.push(frame)
+        }
+        return
+      }
+      this.streams.get(message.streamId)?.push(message)
     } catch (error) {
       const failure = new RemoteStreamCarrierError('api gateway: invalid Remote stream frame', { cause: error })
       this.failAll(failure)
