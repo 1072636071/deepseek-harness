@@ -51,6 +51,10 @@ export function ModelSelect(
   )
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('root')
+  // The provider whose models fill the right pane column. Reset to the current
+  // selection's group (falling back to the first) every time the model pane
+  // opens, so re-entering the list lands on the provider already in use.
+  const [activeGroup, setActiveGroup] = useState<string | undefined>(undefined)
   // The in-menu error strip serves catalog loads (its Retry re-runs the
   // load); a rejected SELECTION announces through the transient toast
   // instead, so the strip renders only while the latest failure-capable
@@ -114,12 +118,32 @@ export function ModelSelect(
     return () => { document.removeEventListener('mousedown', closeOutside) }
   }, [open])
 
+  // A catalog refresh may drop the provider the pane was showing; fall back to
+  // the first advertised group rather than leaving the right column blank.
+  useEffect(() => {
+    if (activeGroup === undefined) return
+    if (!state.groups.some(group => group.id === activeGroup)) {
+      setActiveGroup(state.groups[0]?.id)
+    }
+  }, [state.groups, activeGroup])
+
   if (!available) return null
 
   const show = (): void => {
     setPane('root')
     setOpen(true)
     reload()
+  }
+
+  const openModelPane = (): void => {
+    // Land the right column on the provider already serving this session,
+    // when the catalog still carries it; otherwise the first advertised group.
+    const current = state.current?.provider
+    setActiveGroup(
+      state.groups.some(group => group.id === current) ? current
+        : state.groups[0]?.id,
+    )
+    setPane('model')
   }
 
   const close = (restoreFocus = false): void => {
@@ -247,7 +271,7 @@ export function ModelSelect(
         >
           {pane === 'root' && (
             <>
-              <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('model') }}>
+              <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={openModelPane}>
                 <span className={css.cellLabel}>{t('menu.model')}</span>
                 <span className={css.cellValue}>{modelLabel}</span>
                 <IconChevronRightOutline14 className={css.cellChevron} />
@@ -279,42 +303,70 @@ export function ModelSelect(
                   <button type="button" className={css.retry} onClick={reload}>{t('retry')}</button>
                 </div>
               ))}
-              <div className={clsx(css.groups, 'scrollable')}>
-                {state.groups.map((group) => {
-                  const headingId = `${id}-${group.id}`
-                  return (
-                    <section role="group" aria-labelledby={headingId} className={css.group} key={group.id}>
-                      <div className={css.groupTitle} id={headingId}>{group.name}</div>
-                      {group.models.map((model) => {
-                        const selected = state.current?.provider === group.id && state.current.model === model.id
-                        return (
-                          <button
-                            ref={itemRef()}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={selected}
-                            className={clsx(css.option, selected && css.selected)}
-                            key={model.id}
-                            title={model.name}
-                            disabled={busy}
-                            onClick={() => { choose({ provider: group.id, model: model.id }) }}
-                          >
-                            <span className={css.optionCopy}>
-                              <span className={css.modelName}>{model.name}</span>
-                            </span>
-                            <span className={css.check}>
-                              {selected ? <IconCheckOutline16 /> : null}
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </section>
-                  )
-                })}
+              <div className={css.columns}>
+                <div className={css.providerColumn}>
+                  {state.groups.map((group) => {
+                    const active = activeGroup === group.id
+                    return (
+                      <button
+                        ref={itemRef()}
+                        type="button"
+                        role="menuitem"
+                        aria-current={active ? 'true' : undefined}
+                        aria-controls={`${id}-models-${group.id}`}
+                        className={clsx(css.providerOption, active && css.providerActive)}
+                        key={group.id}
+                        onClick={() => { setActiveGroup(group.id) }}
+                      >
+                        <span className={css.providerName}>{group.name}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className={css.modelColumn}>
+                  {(() => {
+                    const activeGroupState = state.groups.find(group => group.id === activeGroup)
+                    // One empty message serves both an unpublished active
+                    // provider and one whose models did not load.
+                    const empty = state.status === 'ready'
+                      && (activeGroupState === undefined || activeGroupState.models.length === 0)
+                      ? <div className={css.empty}>{t('empty.models')}</div>
+                      : null
+                    if (activeGroupState === undefined) return empty
+                    return (
+                      <div id={`${id}-models-${activeGroupState.id}`} role="group" aria-label={activeGroupState.name}>
+                        {activeGroupState.models.map((model) => {
+                          const selected = state.current?.provider === activeGroupState.id
+                            && state.current.model === model.id
+                          return (
+                            <button
+                              ref={itemRef()}
+                              type="button"
+                              role="menuitemradio"
+                              aria-checked={selected}
+                              className={clsx(css.option, selected && css.selected)}
+                              key={model.id}
+                              title={model.name}
+                              disabled={busy}
+                              onClick={() => {
+                                choose({ provider: activeGroupState.id, model: model.id })
+                              }}
+                            >
+                              <span className={css.optionCopy}>
+                                <span className={css.modelName}>{model.name}</span>
+                              </span>
+                              <span className={css.check}>
+                                {selected ? <IconCheckOutline16 /> : null}
+                              </span>
+                            </button>
+                          )
+                        })}
+                        {empty}
+                      </div>
+                    )
+                  })()}
+                </div>
               </div>
-              {state.status === 'ready' && choices.length === 0 && (
-                <div className={css.empty}>{t('empty.models')}</div>
-              )}
             </>
           )}
 

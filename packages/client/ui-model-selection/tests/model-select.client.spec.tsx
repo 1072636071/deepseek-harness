@@ -215,3 +215,256 @@ describe('ModelSelect reasoning effort', () => {
     expect(load).not.toHaveBeenCalled()
   })
 })
+
+describe('ModelSelect two-column layout', () => {
+  const multi = (): ModelDirectoryState => state({
+    current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+    groups: [
+      {
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [
+          { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash', reasoning },
+          { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+        ],
+      },
+      {
+        id: 'anthropic',
+        name: 'Anthropic',
+        models: [
+          { id: 'claude-sonnet', name: 'Claude Sonnet' },
+          { id: 'claude-opus', name: 'Claude Opus' },
+        ],
+      },
+    ],
+  })
+
+  it('opens the model pane with the current provider in the right column', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(multi())
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+
+    // Left column lists every provider.
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent))
+      .toEqual(['DeepSeek', 'Anthropic'])
+    // Right column shows only the current provider's models.
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
+      .toEqual(['DeepSeek-V4-Flash', 'DeepSeek-V4-Pro'])
+  })
+
+  it('switches the right column when another provider is selected', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(multi())
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    expect(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Flash/ })).toBeTruthy()
+    expect(screen.queryByRole('menuitemradio', { name: /Claude/ })).toBeNull()
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Anthropic' }))
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
+      .toEqual(['Claude Sonnet', 'Claude Opus'])
+    expect(screen.queryByRole('menuitemradio', { name: /DeepSeek-V4/ })).toBeNull()
+  })
+
+  it('selects a model from the right column and lands on the active provider', async () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(multi())
+    const select = vi.fn(async (selection: ModelSelection) => {
+      directory.set(state({ current: selection, groups: multi().groups }))
+      return true
+    })
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Anthropic' }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Claude Opus/ }))
+
+    await waitFor(() => {
+      expect(select).toHaveBeenCalledWith({
+        provider: 'anthropic',
+        model: 'claude-opus',
+      })
+    })
+  })
+
+  it('lands the right column on the first provider when the current selection is not advertised', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      current: { provider: 'voyager', model: 'gone' },
+      groups: multi().groups,
+    }))
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    // Fallback: first advertised group (DeepSeek) fills the right column.
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent))
+      .toEqual(['DeepSeek-V4-Flash', 'DeepSeek-V4-Pro'])
+  })
+
+  it('exposes the active provider and its model list to assistive tech', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(multi())
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+
+    const activeProvider = screen.getByRole('menuitem', { name: 'DeepSeek' })
+    expect(activeProvider.getAttribute('aria-current')).toBe('true')
+    expect(screen.getByRole('menuitem', { name: 'Anthropic' }).getAttribute('aria-current'))
+      .toBeNull()
+    // The provider names its model group through aria-controls.
+    const controls = activeProvider.getAttribute('aria-controls') ?? ''
+    const group = controls.length > 0 ? document.getElementById(controls) : null
+    expect(group).not.toBeNull()
+    expect(group?.getAttribute('role')).toBe('group')
+    expect(group?.getAttribute('aria-label')).toBe('DeepSeek')
+    // The right column carries the provider's models.
+    expect(group?.textContent).toContain('DeepSeek-V4-Flash')
+  })
+
+  it('shows a provider-empty message only for the active group without models', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      current: { provider: 'empty', model: 'x' },
+      groups: [
+        { id: 'empty', name: 'Empty', models: [] },
+        { id: 'full', name: 'Full', models: [{ id: 'm1', name: 'Model-One' }] },
+      ],
+    }))
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+
+    // The active (empty) provider renders the empty message, not the full one.
+    expect(screen.getByText('没有可用的模型。')).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Full' }))
+    expect(screen.queryByText('没有可用的模型。')).toBeNull()
+    expect(screen.getByRole('menuitemradio', { name: 'Model-One' })).toBeTruthy()
+  })
+
+  it('falls back to the first advertised provider when a refresh drops the active one', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(multi())
+    const { rerender } = render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    expect(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Flash/ })).toBeTruthy()
+
+    // Refresh answers without DeepSeek; the pane must land on the new first
+    // group rather than leave the right column blank.
+    directory.set(state({
+      current: { provider: 'anthropic', model: 'claude-sonnet' },
+      groups: [{
+        id: 'anthropic',
+        name: 'Anthropic',
+        models: [
+          { id: 'claude-sonnet', name: 'Claude Sonnet' },
+          { id: 'claude-opus', name: 'Claude Opus' },
+        ],
+      }],
+    }))
+    rerender(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+    expect(screen.getByRole('menuitemradio', { name: /Claude Sonnet/ })).toBeTruthy()
+    expect(screen.queryByRole('menuitemradio', { name: /DeepSeek-V4/ })).toBeNull()
+  })
+
+  it('navigates providers and selects a model with the keyboard', async () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(multi())
+    const select = vi.fn(async (selection: ModelSelection) => {
+      directory.set(state({ current: selection, groups: multi().groups }))
+      return true
+    })
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={select}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+
+    // Arrow keys move across the flattened menuitem set: providers then the
+    // active provider's models.
+    const deepseek = screen.getByRole('menuitem', { name: 'DeepSeek' })
+    deepseek.focus()
+    fireEvent.keyDown(deepseek, { key: 'ArrowDown' })
+    const anthropic = screen.getByRole('menuitem', { name: 'Anthropic' })
+    expect(document.activeElement).toBe(anthropic)
+    // ArrowDown past the last provider reaches the active group's first model.
+    fireEvent.keyDown(anthropic, { key: 'ArrowDown' })
+    expect(document.activeElement?.textContent).toContain('DeepSeek-V4-Flash')
+    // ArrowDown again reaches the active group's second model (not the current
+    // selection, so choosing it must submit).
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'ArrowDown' })
+    expect(document.activeElement?.textContent).toContain('DeepSeek-V4-Pro')
+    fireEvent.click(document.activeElement as HTMLElement)
+    await waitFor(() => {
+      expect(select).toHaveBeenCalledWith({
+        provider: 'deepseek-official',
+        model: 'deepseek-v4-pro',
+      })
+    })
+  })
+})
