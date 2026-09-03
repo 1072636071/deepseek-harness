@@ -11,7 +11,7 @@ import {
 
 /** One namespace carrying a provider profile with a `models` array. */
 function namespace(ns: string, value: unknown): SettingsNamespaceView {
-  return { ns, value: value as never, schema: {}, base: undefined, user: undefined, applies: true, secrets: {}, revision: 1 }
+  return { ns, value: value as never, schema: {}, applies: 'live', secrets: [], revision: 1 }
 }
 
 /** A minimal describe mirror face over a mutable snapshot. */
@@ -22,7 +22,6 @@ function mirror(initial: SettingsMirrorSnapshot) {
     subscribe: (listener) => { return store.subscribe(listener) },
     ensure: () => Promise.resolve(),
     acceptView: () => {},
-    namespace: () => undefined,
   }
   return { face, store }
 }
@@ -48,7 +47,7 @@ describe('hiddenModelsOf', () => {
           }),
         ],
       }, error: null,
-    }).face)[0]
+    }).face)[0]!
     expect(hiddenModelsOf(resolved)).toEqual(new Set(['flash']))
   })
 
@@ -59,14 +58,14 @@ describe('hiddenModelsOf', () => {
           namespace('llm-deepseek', { config: { official: {} } }),
         ],
       }, error: null,
-    }).face)[0]
+    }).face)[0]!
     expect(hiddenModelsOf(resolved)).toEqual(new Set())
   })
 
   it('treats a provider with no namespace view as all-visible', () => {
     const resolved = joinVisibilityDirectory([PROVIDER], mirror({
       status: 'ready', view: { writable: true, hasDocument: true, namespaces: [] }, error: null,
-    }).face)[0]
+    }).face)[0]!
     expect(hiddenModelsOf(resolved)).toEqual(new Set())
   })
 })

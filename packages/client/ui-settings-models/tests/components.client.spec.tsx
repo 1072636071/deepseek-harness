@@ -939,7 +939,7 @@ describe('ModelsSection', () => {
     fireEvent.click(toggles[0] as HTMLInputElement)
     fireEvent.click(screen.getByText(en.apply))
     await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
-    const value = mutate.mock.calls[0][1][0].value as Record<string, unknown>[]
+    const value = mutate.mock.calls[0]![1]![0]!.value as Record<string, unknown>[]
     expect(value[0]).toEqual({ ...DEFAULT_DEEPSEEK_MODELS[0], visible: false })
   })
 
