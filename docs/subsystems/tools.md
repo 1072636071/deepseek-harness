@@ -178,7 +178,7 @@ type ToolExecutionToken = symbol & { readonly [toolExecutionTokenBrand]: true }
 
 ```ts type-equiv
 /**
- * Caller-supplied description of one tool call. {@link ToolRuntime.execute}
+ * Caller-supplied description of one tool call. The registry's `execute`
  * adds the registry-owned token to form a pipeline {@link ToolExecution};
  * callers do not choose that token.
  */
@@ -201,7 +201,7 @@ interface ToolExecutionInput {
    * The token also marks the call as a transport sub-dispatch rather than a
    * model-direct call: under `mode: 'ptc'`, only calls WITH a parent may
    * execute a native tool name — a model-direct call (no parent) is denied as
-   * `UNKNOWN_TOOL` before the policy pipeline. See {@link ToolRuntime.execute}.
+   * `UNKNOWN_TOOL` before the policy pipeline.
    */
   readonly parent?: ToolExecutionToken
   /** Required caller-owned cancellation for this invocation. */
@@ -214,7 +214,7 @@ A tool body receives the runtime extension. `deferContext()` attaches context to
 ```ts type-equiv
 /**
  * Runtime context handed to a tool implementation after the registry has
- * accepted a {@link ToolExecution}. {@link deferContext} attaches context to
+ * accepted a {@link ToolExecution}. Deferring a context attaches it to
  * this execution's own result — a composite tool ferries nested-dispatch
  * context back to the outer result, and a leaf tool may mint a fresh
  * plugin-sourced instruction; the loop appends it only after the
@@ -231,7 +231,7 @@ interface ToolRunContext extends ToolExecution {
   /**
    * Mark a successful final result as terminal for the current agent turn.
    * The marker rides this execution's own result (`concludesTurn` exists only
-   * on {@link ToolExecutionSuccess}); a composite that dispatches nested
+   * on a successful result); a composite that dispatches nested
    * calls forwards it from the nested result, exactly like
    * `additionalContexts`, so only an authoritative nested success can
    * conclude the enclosing run.

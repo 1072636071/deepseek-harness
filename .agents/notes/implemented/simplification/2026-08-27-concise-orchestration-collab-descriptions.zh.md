@@ -6,7 +6,7 @@ Status: implemented
 
 ## Problem
 
-编排与协作族工具的模型可见描述冗长且呈论文式写法——`workflow` 约 1500 字符、`list_agents` 约 1000 字符，`cordis_*` 每个 300–550 字符，`todo_write`/`schedule_create`/`ralph`/`interrupt_agent`/`report`/`subagent` 均超过 200 字符。每次组装的模型请求都会携带完整工具目录，因此这些叙述膨胀了提示词成本并稀释了对工具本身的注意力，违背 ADR-0016 的 token 优先优先级链。极简原生插件工作（win-shell-mcp 批次 19）希望原生全量目录的提示词预算与极简 preset 相当；冗长描述破坏了这一预算。shell/fs/编辑/终端族已在[姊妹笔记](../../simplification/2026-08-27-concise-shell-fs-terminal-descriptions.md)精简，本工单覆盖其余可见工具集。
+编排与协作族工具的模型可见描述冗长且呈论文式写法——`workflow` 约 1500 字符、`list_agents` 约 1000 字符，`cordis_*` 每个 300–550 字符，`todo_write`/`schedule_create`/`ralph`/`interrupt_agent`/`report`/`subagent` 均超过 200 字符。每次组装的模型请求都会携带完整工具目录，因此这些叙述膨胀了提示词成本并稀释了对工具本身的注意力，违背 ADR-0016 的 token 优先优先级链。极简原生插件工作（win-shell-mcp 批次 19）希望原生全量目录的提示词预算与极简 preset 相当；冗长描述破坏了这一预算。shell/fs/编辑/终端族已在[姊妹笔记](./2026-08-27-concise-shell-fs-terminal-descriptions.zh.md)精简，本工单覆盖其余可见工具集。
 
 ## Decision
 
