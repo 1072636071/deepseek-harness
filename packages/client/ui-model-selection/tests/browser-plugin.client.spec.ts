@@ -90,8 +90,30 @@ async function bench() {
       return Promise.resolve({ ok: true as const, value: { selected } })
     },
   }
-  const remote = Object.assign(new TestRemote(ctx), { session: sessionRemote })
+  const remote = Object.assign(new TestRemote(ctx), {
+    session: sessionRemote,
+    llm: {
+      listConfigurableProviders: () => Promise.resolve({ ok: true as const, value: [] }),
+    },
+  })
   ctx.reflect.provide('remote.session', sessionRemote)
+  ctx.reflect.provide('remote.llm', {
+    listConfigurableProviders: () => Promise.resolve({ ok: true as const, value: [] }),
+  })
+  const visibilityMirror = createSnapshotStore({
+    status: 'unavailable' as const,
+    view: undefined,
+    error: null,
+  })
+  ctx.provide('settingsScope', {
+    describe: () => ({
+      getSnapshot: () => visibilityMirror.getSnapshot(),
+      subscribe: (listener: () => void) => { visibilityMirror.subscribe(listener) },
+      ensure: () => Promise.resolve(),
+      acceptView: () => {},
+      namespace: () => undefined,
+    }),
+  })
   const blocks = new Map<SessionId, { reason: string } | undefined>()
   ctx.provide('conversation', {
     blocks: {
