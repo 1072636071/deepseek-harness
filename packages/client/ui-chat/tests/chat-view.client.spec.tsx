@@ -24,7 +24,7 @@ import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts
 import { createChatStore } from '../src/client/stores.ts'
 import { ChatView } from '../src/client/chat/ChatView.tsx'
 import { ChatNodeSeat } from '../src/client/chat/ChatNodeSeat.tsx'
-import { zh } from '../src/client/locale.ts'
+import { zh, en, deepDivingPool } from '../src/client/locale.ts'
 import { AssistantNodeView } from '../src/client/chat/AssistantNodeView.tsx'
 import { CommandNodeView, ManualCompactionNodeView } from '../src/client/chat/CommandNodeView.tsx'
 import {
@@ -203,7 +203,9 @@ function makeHarness(
   init: HarnessUpdate = {},
   sessionOverrides: Partial<SessionSnapshot> = {},
   chatSnapshot?: ChatSnapshot,
+  opts: { locale?: 'zh' | 'en' } = {},
 ) {
+  const locale: 'zh' | 'en' = opts.locale ?? 'zh'
   const {
     chat: initialChat, nodes, partial, runningCalls, turnTimings, turnEnds,
     ...sessionInit
@@ -231,7 +233,7 @@ function makeHarness(
   // Rows and the harness must observe the same chat-store instance.
   const chat = createChatStore().create()
   const transcriptView = createSnapshotStore<TranscriptViewMode>('compact')
-  const t = makeTranslate(zh, commonZh)
+  const t = makeTranslate(locale === 'zh' ? zh : en, locale === 'zh' ? commonZh : {})
   const toolOwners: Array<{
     callId: string
     toolName: string
@@ -372,6 +374,7 @@ function makeHarness(
     // Absent-service default; mention tests override with a real resolver.
     fileMentions: () => undefined,
     t,
+    activeLocale: () => locale,
   }
   const set = (next: HarnessUpdate): void => {
     const {
@@ -1738,11 +1741,22 @@ describe('ChatView', () => {
   })
 
   it('hands running calls to a live Tool group', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
     const h = makeHarness({ runningCalls: [runningCall('r1')] }, { running: true })
     const view = render(<h.ChatView {...h.props} />)
     expect(view.getByTestId('tool-seat-r1')).toBeTruthy()
     expect(h.toolOwners[0]?.block).toMatchObject({ callId: 'r1', argsRaw: '{"command":"cmd-r1"}' })
-    expect(view.getByRole('status').textContent).toBe('深度求索中...')
+    // One playful phrase fixed at mount; the deterministic random pins it to pool[0].
+    expect(view.getByRole('status').textContent).toBe(deepDivingPool.zh[0]!)
+    random.mockRestore()
+  })
+
+  it('renders an English playful phrase in the English locale', () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+    const h = makeHarness({ runningCalls: [runningCall('r1')] }, { running: true }, undefined, { locale: 'en' })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.getByRole('status').textContent).toBe(deepDivingPool.en[0])
+    random.mockRestore()
   })
 
   it('keeps the Tool renderer mounted when a running call settles into log order', () => {
@@ -1795,6 +1809,7 @@ describe('ChatView', () => {
   it('the running clock uses turn/start, ignores steering, and stays out of the live region', () => {
     const startTime = Date.now() - 125_000
     const trigger: UserMessageNode = { ...user(1, 'go'), time: startTime + 1 }
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0)
     const h = makeHarness(
       { nodes: [trigger], turnTimings: new Map([[1, { startTime }]]) },
       { running: true },
@@ -1802,8 +1817,10 @@ describe('ChatView', () => {
     const view = render(<h.ChatView {...h.props} />)
     // Freshly mounted (as after a reload) yet already past the 15s gate.
     const status = view.getByRole('status')
-    expect(status.textContent).toMatch(/^深度求索中\.\.\.2分0\d秒$/)
-    expect(status.querySelector('[aria-hidden="true"]')).not.toBeNull()
+    // Phrase stays pinned to pool[0] across the per-second tick; the clock is a
+    // separate aria-hidden node appended after it.
+    expect(status.textContent.startsWith(deepDivingPool.zh[0]!)).toBe(true)
+    expect(status.querySelector('[aria-hidden="true"]')?.textContent).toMatch(/^2分0\d秒$/)
     act(() => {
       h.setSession({ queue: [{
         id: 'steering-occurrence' as never,
@@ -1814,7 +1831,9 @@ describe('ChatView', () => {
         text: 'also',
       }] })
     })
-    expect(status.textContent).toMatch(/^深度求索中\.\.\.2分0\d秒$/)
+    expect(status.textContent.startsWith(deepDivingPool.zh[0]!)).toBe(true)
+    expect(status.querySelector('[aria-hidden="true"]')?.textContent).toMatch(/^2分0\d秒$/)
+    random.mockRestore()
   })
 
   it('hands each ordered root call to the keyed business-node slot', () => {

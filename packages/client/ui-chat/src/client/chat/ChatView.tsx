@@ -12,6 +12,7 @@ import { PendingSteeringBubble, PendingSubmissionBubble } from './MessageItem.ts
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { TurnNavigator } from './TurnNavigator.tsx'
 import { formatRunDuration } from './message-chrome.ts'
+import { pickDeepDivingPhrase } from '../locale.ts'
 import css from './ChatView.module.css'
 
 const FOLLOW_THRESHOLD = 24
@@ -162,12 +163,14 @@ function runningTurnStartTime(timeline: ConversationTimelineSnapshot): number | 
 }
 
 /** Turn-level model activity label retained across first-token, tool, and streaming phases. */
-function TurnStatus({ startTime, t }: {
+function TurnStatus({ startTime, t, activeLocale }: {
   /** The running turn's logged `turn/start` time; null falls back to mount
    *  time when that boundary is outside the window. */
   startTime: number | null
   /** The owning view's locale seat. */
   t: ChatViewSlotProps['t']
+  /** Active locale id, read from the locale face snapshot. */
+  activeLocale: ChatViewSlotProps['activeLocale']
 }) {
   const [mountedAt] = useState(() => Date.now())
   // Anchored to turn/start so a mid-turn reload keeps the real
@@ -182,12 +185,17 @@ function TurnStatus({ startTime, t }: {
     const id = setInterval(tick, 1000)
     return () => { clearInterval(id) }
   }, [anchor])
+  // One playful phrase fixed at mount for the whole turn: the per-second tick
+  // re-renders but never re-draws, so the aria-live region stays quiet and the
+  // line does not flicker. The pool misses non-zh/en ids, so fall back to the
+  // original label.
+  const [phrase] = useState(() => pickDeepDivingPhrase(activeLocale()) ?? t('chat.deepDiving'))
   // Short turns keep the plain label; the clock only appears once the turn
   // has clearly been running for a while.
   const showClock = elapsedMs >= 15_000
   return (
     <div className={css.turnStatus} role="status" aria-live="polite">
-      {t('chat.deepDiving')}
+      {phrase}
       {showClock && (
         <span className={css.turnStatusClock} aria-hidden>
           {formatRunDuration(elapsedMs, t)}
@@ -203,7 +211,7 @@ function TurnStatus({ startTime, t }: {
  */
 export function ChatView({
   useSession, useChat, useSessions, useStore, actions, renderSlot, sessionId, openFile, loadOlder, loadImage, openView, chatScroll, forkAt,
-  fileMentions, useTranscriptView, t,
+  fileMentions, useTranscriptView, t, activeLocale,
 }: ChatViewSlotProps) {
   const order = useChat(s => s.order)
   const nodeStore = useChat(s => s.nodes)
@@ -617,7 +625,7 @@ export function ChatView({
               double-render the same wait. */}
           {/* Turn-level loading signal: rides the whole running turn (first-token
               wait, tool execution, streaming) so it never flickers per step. */}
-          {running && <TurnStatus startTime={runningTurnStart} t={t} />}
+          {running && <TurnStatus startTime={runningTurnStart} t={t} activeLocale={activeLocale} />}
           {pendingSteering.map(item => (
             <PendingSteeringBubble
               key={item.id}

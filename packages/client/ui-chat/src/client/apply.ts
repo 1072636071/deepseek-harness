@@ -143,6 +143,7 @@ export function apply(ctx: Context): void {
                 // Fork or child-title failure leaves the source view unchanged.
               })
           },
+          activeLocale: () => ctx.locale.getSnapshot().active,
         }
       },
     }, ChatView)
