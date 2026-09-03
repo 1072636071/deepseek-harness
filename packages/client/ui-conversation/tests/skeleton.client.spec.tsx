@@ -179,6 +179,7 @@ function mount(
       seatOwners.push({ key, owner })
     }
     if (key === 'conversation.hero.workspace') { pickerOwner = owner; return null }
+    if (key === 'conversation.hero.headline') { return opts?.fallback ?? null }
     if (key === 'conversation.session.header.lineage') {
       lineageOwners.push(owner as ConversationHeaderLineageOwnerProps)
       return opts?.fallback ?? null
@@ -308,12 +309,13 @@ function mount(
 }
 
 describe('Hero chrome', () => {
-  it('renders the English preview badge through the hero locale seat', () => {
-    const renderSlot = vi.fn<HeroShellProps['renderSlot']>(() => null)
+  it('renders the English preview badge and headline through the hero locale seat', () => {
+    const renderSlot = vi.fn<HeroShellProps['renderSlot']>((key, _owner, opts) =>
+      key === 'conversation.hero.headline' ? (opts?.fallback ?? null) : null)
     const view = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={renderSlot} />)
     expect(view.getByText('Into the Unknown')).toBeTruthy()
     expect(view.getByText('Preview')).toBeTruthy()
-    expect(renderSlot).toHaveBeenCalledOnce()
+    expect(renderSlot).toHaveBeenCalledTimes(2)
     expect(renderSlot.mock.calls[0]?.[0]).toBe('conversation.hero.brand.mark')
     const brandMarkOwner = renderSlot.mock.calls[0]?.[1]
     if (brandMarkOwner === undefined || !('size' in brandMarkOwner) || !('className' in brandMarkOwner)) {
@@ -322,6 +324,23 @@ describe('Hero chrome', () => {
     expect(brandMarkOwner.size).toBe(34)
     expect(brandMarkOwner.className).toBeTypeOf('string')
     expect(renderSlot.mock.calls[0]?.[2]?.fallback).toBeTruthy()
+    expect(renderSlot.mock.calls[1]?.[0]).toBe('conversation.hero.headline')
+    expect(renderSlot.mock.calls[1]?.[1]).toEqual({})
+    expect(renderSlot.mock.calls[1]?.[2]?.fallback).toBeTruthy()
+  })
+
+  it('shows the occupant headline and falls back to the locale key when released', () => {
+    const occupied = vi.fn<HeroShellProps['renderSlot']>((key, _owner, _opts) =>
+      key === 'conversation.hero.headline' ? 'Good morning, Alice' : null)
+    const released = vi.fn<HeroShellProps['renderSlot']>((key, _owner, opts) =>
+      key === 'conversation.hero.headline' ? (opts?.fallback ?? null) : null)
+    const occupiedView = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={occupied} />)
+    expect(occupiedView.getByText('Good morning, Alice')).toBeTruthy()
+    expect(occupiedView.queryByText('Into the Unknown')).toBeNull()
+    cleanup()
+    const releasedView = render(<HeroShell t={makeTranslate(en, commonEn)} renderSlot={released} />)
+    expect(releasedView.getByText('Into the Unknown')).toBeTruthy()
+    expect(releasedView.queryByText('Good morning, Alice')).toBeNull()
   })
 })
 
