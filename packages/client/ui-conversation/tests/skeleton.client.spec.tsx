@@ -325,7 +325,7 @@ describe('Hero chrome', () => {
     expect(brandMarkOwner.className).toBeTypeOf('string')
     expect(renderSlot.mock.calls[0]?.[2]?.fallback).toBeTruthy()
     expect(renderSlot.mock.calls[1]?.[0]).toBe('conversation.hero.headline')
-    expect(renderSlot.mock.calls[1]?.[1]).toEqual({})
+    expect(renderSlot.mock.calls[1]?.[1]).toEqual({ className: expect.any(String) })
     expect(renderSlot.mock.calls[1]?.[2]?.fallback).toBeTruthy()
   })
 

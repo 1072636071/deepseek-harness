@@ -319,8 +319,8 @@ export interface HeroBrandMarkOwnerProps {
 
 /** Owner share of the blank-session headline; the occupant owns only its text. */
 export interface HeroHeadlineOwnerProps {
-  /** Marker field: the occupant receives no owner-specific values. */
-  children?: never
+  /** Headline styling the occupant should apply to its text node. */
+  className?: string
 }
 
 /** Full props of the resident optional-Session Conversation shell. */
