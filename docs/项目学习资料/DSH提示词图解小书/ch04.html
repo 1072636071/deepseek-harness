@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>04 · 注入全景：五个阶段 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch03.html" data-next="ch05.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第二篇 · 流转篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n">第 04 章</span><span class="part">第二篇 · 流转篇</span></div>
+    <h1>注入全景：从「启动」到「每一步」的五个阶段</h1>
+    <p class="lead">把“提示词到底在哪些时候被注入”拆成五个阶段。你会发现：<strong>真正“越到后面越热闹”的是阶段 3/4/5——它们都发生在运行中、而且是“再注入/重快照”</strong>。这正是你在请求体里看到许多提示词片段的原因。</p>
+    <div class="updated">各阶段注入的真实文本原文，见第 09 章原文库。</div>
+  </div>
+
+  <div class="pipeline">
+    <div class="stage"><div class="badge"><span class="ph" style="background:#0c2a5e">阶段 0</span><span class="sub">启动 / 配置</span></div>
+      <div class="body"><b>装配规则被登记。</b> harness 身份、部署人格、各插件的段与变量、全局 toolOrder 在进程启动时注册进 registry；Cordis 按配置文件把第一方 + 第三方插件挂载上树。<span class="note"> ← 静态层的来源</span></div></div>
+    <div class="flowarrow">▼</div>
+    <div class="stage"><div class="badge"><span class="ph" style="background:#12428f">阶段 1</span><span class="sub">会话 / agent preset</span></div>
+      <div class="body"><b>作用域层建立。</b> 每次开 agent（含子代理）时，preset/persona 等往 <em>agent.ctx</em> 作用域登记同名段，遮蔽全局。同一份二进制可跑出不同人格的 agent。<span class="note"> ← 第 03 章的机制在这里发生</span></div></div>
+    <div class="flowarrow">▼</div>
+    <div class="stage"><div class="badge"><span class="ph" style="background:#1f6feb">阶段 2</span><span class="sub">每个 step · assemble</span></div>
+      <div class="body"><b>拼 system 正文与工具集。</b> 轮次内每个 step 前调用 <code>assemble()</code>：段按序拼接、变量现算、schema 收集排序，产出 <code>system</code> 文本。<span class="note"> ← 提示词段“稳态”在这里</span></div></div>
+    <div class="flowarrow">▼</div>
+    <div class="stage"><div class="badge"><span class="ph" style="background:#b45309">阶段 3</span><span class="sub">每个 step · 运行时注入</span></div>
+      <div class="body"><b>动态上下文“重快照”。</b> 把 sandbox/approval 等可变事实打包成一条 <em>user 消息</em>“Current runtime context…”，追加进消息历史。<span class="note"> ← “运行还会注入”的本体，第 06 章专讲</span></div></div>
+    <div class="flowarrow">▼</div>
+    <div class="stage"><div class="badge"><span class="ph" style="background:#0e7490">阶段 4 / 5</span><span class="sub">文件指令 &amp; 子代理</span></div>
+      <div class="body"><b>随运行涌入。</b> AGENTS.md/CLAUDE.md 基线进入 durable 上下文；当 agent <code>read/write/edit</code> 触碰某文件后，新的嵌套指令经 <code>agent/pre-step</code> 折进 inbox；子代理另建独立 scope。<span class="note"> ← 提示词“增长”的来源</span></div></div>
+  </div>
+
+  <h3 class="sub">阶段 4 值得单独看一眼：workspace 指令的“活更新”</h3>
+  <div class="timeline">
+    <div class="tl-item"><span class="when">会话开始前</span>
+      <h4>基线指令先入队</h4>
+      <p>项目根与 <code>$DSH_HOME</code> 下的 <code>AGENTS.md</code> / <code>CLAUDE.md</code>（含 <code>.local</code> 覆盖层）被加载渲染，作为带 <code>agent-instructions</code> 来源标记的 user 消息进入 durable 上下文——<strong>在第一次模型请求之前</strong>。</p></div>
+    <div class="tl-item hot"><span class="when">运行中 · 每次文件触达</span>
+      <h4>read/write/edit 触发增量投影</h4>
+      <p>工具结果管道监听 <code>tools/result</code>：一旦触碰了含嵌套指令的路径（如子目录的 <code>AGENTS.md</code>），或已加载文件内容变化/被删除，就重新协调并生成“Additional instructions / Updated instructions / Instructions removed”增量消息。</p></div>
+    <div class="tl-item"><span class="when">下一个 pre-step</span>
+      <h4>折进消息流，位置讲究</h4>
+      <p>经 <code>agent/pre-step</code> 瀑布折入，刻意排在直接 prompt <strong>之后</strong>、driver 注入的 runtime 快照<strong>之前</strong>——直接的话优先，事实快照殿后。</p></div>
+  </div>
+
+  <div class="callout tip">
+    <b>直观感受：</b>你常疑惑“我明明只发了一句 followup，为什么模型面前塞了那么多说明？”——因为这些不是“你发的话”，而是 DSH 在阶段 2~5 给每个 step <strong>现拼的引导 + 现刷的运行时事实 + 现读的项目规则</strong>。模型看到的从来不是“你的一句话”，而是“一条被喂饱的上下文”。
+  </div>
+
+  <div class="callout key">
+    <b>本章心法：</b>五个阶段 = <strong>注册（0）→ 分层（1）→ 拼装（2）→ 快照（3）→ 涌入（4/5）</strong>。前两个是“规则建立”，后三个是“每步执行”。下一章把一次真实请求摊开看排布。
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch03.html"><span class="dir">◂ 上一章</span><span class="t">03 · 作用域分层</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch05.html"><span class="dir">下一章 ▸</span><span class="t">05 · 一次请求的解剖</span></a>
+  </div>
+  <div class="pagenum">— 第 5 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

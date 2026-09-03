@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>05 · 一次真实请求的解剖 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch04.html" data-next="ch06.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第二篇 · 流转篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n">第 05 章</span><span class="part">第二篇 · 流转篇</span></div>
+    <h1>一次真实请求的解剖：消息堆栈</h1>
+    <p class="lead">把阶段 2/3/4 摊开，一个 step 实际发给模型的请求大致长这样——<code>system</code> 是系统提示词，其余按角色进消息历史。</p>
+    <div class="updated">顺序依据：agent-loop/src/agent.ts 的 preStep/step + agent-instructions 的折入注释。</div>
+  </div>
+
+  <figure>
+    <div style="padding:10px">
+      <div class="stage-legend">
+        <span><i style="background:#0f172a"></i> system 字段</span>
+        <span><i style="background:#12428f"></i> tools 字段(独立 wire)</span>
+        <span><i style="background:#16a34a"></i> 直接用户消息</span>
+        <span><i style="background:#0e7490"></i> workspace 指令</span>
+        <span><i style="background:#b45309"></i> runtime 快照</span>
+      </div>
+      <div class="stack" style="margin-top:8px">
+        <div class="row"><div class="lbl sys">system · 提示词</div>
+          <div class="box">You are an AI agent powered by DeepSeek Harness. <span class="tagpill">identity −1000</span><br>
+            &lt;deployment persona&gt; … <span class="tagpill">persona 0</span><br>
+            plan/tool 各段指引（bash、read、grep…按序排布）<span class="tagpill">…9900</span></div></div>
+        <div class="row"><div class="lbl tools">tools</div>
+          <div class="box">可见工具的 JSON-schema 集合（独立 wire 字段，非 system 文本）</div></div>
+        <div class="row pad"><div class="lbl hist">历史 …</div>
+          <div class="box">此前多轮的 user / assistant / tool 结果消息（长期稳态，逐步滚动）</div></div>
+        <div class="row"><div class="lbl direct">user</div>
+          <div class="box">你这次发来的直接 prompt / 上一步工具续接</div></div>
+        <div class="row"><div class="lbl ws">user · workspace 指令</div>
+          <div class="box">&lt;system-reminder&gt; 以下工作区指令可能相关… AGENTS.md / 嵌套文件（随 read 触达而增减）&lt;/system-reminder&gt;</div></div>
+        <div class="row"><div class="lbl rt">user · 运行时快照</div>
+          <div class="box">Current runtime context. This snapshot supersedes earlier runtime-context snapshots.<br>
+            &nbsp;· sandbox:policy — 当前沙箱模式<br>
+            &nbsp;· approval:policy — 当前审批策略</div></div>
+      </div>
+    </div>
+    <figcaption><b>图 5-1 · 单个 step 的模型输入解剖</b> —— system/tools 由阶段 2 拼出；workspace 指令由 agent-instructions 折入（阶段 4）；runtime 快照每 step 由阶段 3 刷新。</figcaption>
+  </figure>
+
+  <h3 class="sub">为什么拆成三条不同的 user 消息？</h3>
+  <div class="grid3">
+    <div class="minicard"><div class="t"><span class="dot" style="background:#16a34a"></span>直接 prompt</div>
+      <p><b>生命周期：一次。</b>你说的话，进历史后不再变。它排最前，是这一步的“主线”。</p></div>
+    <div class="minicard"><div class="t"><span class="dot" style="background:#0e7490"></span>workspace 指令</div>
+      <p><b>生命周期：项目级。</b>规则长期有效但随文件变化；来源标记 <code>agent-instructions</code> 让系统能追踪“哪条规则来自哪个文件”、变更是增是删。</p></div>
+    <div class="minicard"><div class="t"><span class="dot" style="background:#b45309"></span>runtime 快照</div>
+      <p><b>生命周期：一步。</b>“此刻”的沙箱/审批状态；来源标记 <code>form:'snapshot'</code> 附带 sections，可追溯到贡献子系统。</p></div>
+  </div>
+
+  <div class="callout key">
+    <b>三条 user 消息为何分开？</b><strong>来源不同、生命周期不同</strong>：你的话是一次性的；AGENTS.md 是“项目规则、长期但随文件变更”；runtime 快照是“此刻状态、每步重算”。拆开才能<strong>各自去重、各自刷新、各自计数</strong>，而不是搅成一锅。
+  </div>
+
+  <div class="callout warn">
+    <b>一个容易误读的细节：</b><code>&lt;system-reminder&gt;</code> 虽然名字带 system，但它<strong>不是 system 角色</strong>——它是一条包着提醒外壳的 <em>user 消息</em>。DSH 用这个外壳告诉模型“这是环境注入的元信息，不是用户在跟你说话”。外壳由生产方（agent-instructions）自行包裹，session 层只投影不加工。
+  </div>
+
+  <div class="callout tip">
+    <b>下一章：</b>堆栈最底下那条 “Current runtime context…” 为什么几乎每个 step 都在变？——去重快照机制。
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch04.html"><span class="dir">◂ 上一章</span><span class="t">04 · 注入全景五阶段</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch06.html"><span class="dir">下一章 ▸</span><span class="t">06 · 运行还会注入</span></a>
+  </div>
+  <div class="pagenum">— 第 6 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

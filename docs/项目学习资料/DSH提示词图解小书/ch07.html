@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>07 · 设计动机：KV-Cache · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch06.html" data-next="ch08.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第三篇 · 设计篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n">第 07 章</span><span class="part">第三篇 · 设计篇</span></div>
+    <h1>为什么这样设计：稳定前缀 × KV-Cache</h1>
+    <p class="lead">提示词如此分层，很大程度是在为一个工程目标服务：<strong>让可复用的前缀尽量稳定</strong>，从而最大化 LLM KV-Cache 的命中。</p>
+    <div class="updated">依据：system-prompt README 的 Token / KV Cache 影响章节。</div>
+  </div>
+
+  <div class="card">
+    <h3 class="sub">一条前缀在什么时候“作废”？</h3>
+    <p>只要<strong>身份、persona、变量、段文本与顺序的渲染完全相同</strong>，system 前缀就保持稳定。任何一处变更——变量插出不同的值、段文本改一个字、schema 重排——都会<strong>从第一个变化的 token 起使整个后续缓存失效</strong>。这就是为什么：</p>
+    <div class="kv"><span class="k">排序用字典序</span><span class="v">同号段按 <b>code-unit 字典序</b>而非 locale 排——locale 随机器变，字典序不变，渲染结果跨机器字节级一致。</span></div>
+    <div class="kv"><span class="k">档位稀疏预留</span><span class="v">第一方段位 −1000…9900 相邻差 ≥10：新插件插进中间不挤动别人的位置，旧前缀的段序列不变。</span></div>
+    <div class="kv"><span class="k">PTC 声明确定性</span><span class="v">PTC 模式的工具声明按工具名字典序渲染，同一工具集每次输出字节级一致。</span></div>
+    <div class="kv"><span class="k">schema 每次克隆</span><span class="v">assemble 对工具参数做 <code>structuredClone</code>——“单步内的变更不泄漏到未来装配”，防止某一步的临时改动污染后续前缀。</span></div>
+  </div>
+
+  <div class="card">
+    <h3 class="sub">“稳态的进 system，瞬态的走 user 尾部”</h3>
+    <div class="kv"><span class="k">身份/人格/段</span><span class="v">渲染完全相同时，system 前缀稳定 → 前缀 cache 复用。这是<strong>全书所有分层决定的总原则</strong>。</span></div>
+    <div class="kv"><span class="k acc">沙箱/审批</span><span class="v">把易变事实做成消息尾部快照，切换时<strong>不动前缀</strong>、只在尾部新增/替换一小段（第 06 章的机制）。</span></div>
+    <div class="kv"><span class="k acc">工具 schema</span><span class="v">只要可见集合与顺序不变即稳定；限制某 agent 的工具可移除其全部 schema 成本，重排序只改缓存形状不改语义。</span></div>
+    <div class="kv"><span class="k acc">AGENTS.md</span><span class="v">放 user 消息而非 system：项目规则会随文件变，放 system 里每次改文件都毁前缀；放历史里只追加增量。</span></div>
+  </div>
+
+  <div class="callout key">
+    <b>成本视角小结：</b>启用身份段是每次请求的固定成本；persona 与插件文本随渲染内容增长；schema token 每请求重复。DSH 的对策不是“少说话”，而是<strong>“把会变的挪出前缀，把不变的钉死”</strong>——连“严格插值宁可抛错”都是防患：畸形提示词会让整段前缀作废，不如首轮就暴露。
+  </div>
+
+  <div class="callout tip">
+    <b>下一章：</b>拿实测数据检验这套设计——DSH 自带的提示词到底啰不啰嗦？
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch06.html"><span class="dir">◂ 上一章</span><span class="t">06 · 运行还会注入</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch08.html"><span class="dir">下一章 ▸</span><span class="t">08 · 实测啰不啰嗦</span></a>
+  </div>
+  <div class="pagenum">— 第 8 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

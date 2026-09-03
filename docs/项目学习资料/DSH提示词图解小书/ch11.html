@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>11 · 附录：源码地图与常见疑问 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch10.html" data-next="">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第四篇 · 原文与模式篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n">第 11 章</span><span class="part">第四篇 · 原文与模式篇 · 终章</span></div>
+    <h1>附录：源码地图与常见疑问</h1>
+    <p class="lead">全书的每个机制对应哪个源码文件？五个高频疑问一次说清。带着这张地图，你可以独立验证书中每一个论断。</p>
+    <div class="updated">路径均相对仓库根目录 E:\work\sp\deepseek-harness</div>
+  </div>
+
+  <h3 class="sub">核心源码出处</h3>
+  <div style="overflow:auto"><table class="tbl src-table">
+    <thead><tr><th>机制</th><th>源码</th><th>一句话</th></tr></thead>
+    <tbody>
+      <tr><td>注册表 + 装配流水线</td><td><code>packages/core/system-prompt/src/index.ts</code></td><td><code>SystemPrompt</code> 服务：<code>section/context/tools/variable/suppress</code> 注册；<code>assemble()</code> 拼装；<code>renderPrompt()</code> 插值拼接。</td></tr>
+      <tr><td>第一方档位表</td><td><code>…/system-prompt/src/index.ts</code></td><td><code>FIRST_PARTY_SECTION_ORDER</code>：−1000 身份 … 9900 结构化输出。</td></tr>
+      <tr><td>每 step 触发装配</td><td><code>packages/core/agent-loop/src/agent.ts</code></td><td><code>preStep()</code> 内调 <code>assemble()</code>；<code>step()</code> 里 <code>renderPrompt()</code> 产出 system。</td></tr>
+      <tr><td>运行时快照注入</td><td><code>packages/core/agent-loop/src/runtime-context.ts</code></td><td><code>RuntimeContextProjection.project()</code>：变了才发 user 快照，含清除标记。</td></tr>
+      <tr><td>变量来源</td><td><code>packages/core/agent-loop/src/index.ts</code></td><td>注册 <code>provider/model/cwd</code> 等具名变量。</td></tr>
+      <tr><td>沙箱 / 审批动态上下文</td><td><code>packages/sandbox/sandbox-policy/src/index.ts</code><br><code>packages/interaction/user-approval/src/index.ts</code></td><td>各自 <code>systemPrompt.context()</code> 注册运行时事实（三档 / 两档）。</td></tr>
+      <tr><td>workspace 指令（AGENTS.md）</td><td><code>packages/context/agent-instructions/src/*</code></td><td>读 <code>AGENTS.md/CLAUDE.md</code>，基线入 durable；运行触碰文件后折入 inbox。</td></tr>
+      <tr><td>PTC / SDK 声明渲染</td><td><code>packages/core/tools/src/index.ts</code><br><code>…/ts-types.ts · py-types.ts</code></td><td>native/ptc/both 模式判定；<code>renderToolsSdk(Py)</code> 生成类型声明段。</td></tr>
+      <tr><td>Plan 模式</td><td><code>packages/plan/plan-mode/src/index.ts</code></td><td>条件段 + 部署方 config 校验；开关从 <code>plan/mode</code> 事件折叠。</td></tr>
+      <tr><td>子代理 scope</td><td><code>packages/subagent/subagent/src/child-agent.ts</code></td><td>child ctx 注 delegation 上下文与遮蔽人格。</td></tr>
+      <tr><td>结构化子代理</td><td><code>packages/subagent/subagent-in-process-driver/src/structured.ts</code></td><td><code>structured_output</code> 工具 + 强制收尾指令 + 结果捕获。</td></tr>
+      <tr><td>agent 预设人格</td><td><code>packages/preset/persona/src/index.ts</code></td><td>scope-only 的 <code>deployment:persona</code> 段遮蔽全局。</td></tr>
+      <tr><td>团队</td><td><code>packages/experimental/tool-agent-team/src/index.ts</code></td><td><code>team:policy</code> 作用域段 + <code>spawn_teammate</code>。</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 class="sub">常见疑问 FAQ</h3>
+  <details class="faq"><summary>为什么我看到的“系统提示词”每次都不一样？</summary><div class="body">
+    因为其中夹杂了<strong>随 step 变化的动态上下文快照</strong>（沙箱/审批/子代理任务）与<strong>随文件触达变化的 AGENTS.md 指令</strong>。真正稳定的 system 段（身份/人格/工具指引）若无人改动，渲染应保持一致——你若看到它变了，多半是插件加载顺序、变量值或作用域遮蔽在起作用。</div></details>
+  <details class="faq"><summary>插件要“对模型说句话”，一定得动 system-prompt 吗？</summary><div class="body">
+    不一定。三种途径各取所需：<strong>a)</strong> 一段长期适用的指引 → <code>systemPrompt.section()</code>；<strong>b)</strong> 一个会随状态变化的“事实” → <code>systemPrompt.context()</code>（进 runtime 快照）；<strong>c)</strong> 工具 → 提供 ToolRuntime 让其自动注册 schema。只有需要“完全换一套人格”时才用 <code>complete</code> 段。</div></details>
+  <details class="faq"><summary>为什么“一段 prompt 算两遍”（assemble 求值 + render 插值）？</summary><div class="body">
+    两阶段让<strong>装配与渲染分离</strong>：<code>assemble()</code> 产出“已求值但未插值”的段 + 变量值表 + 有序 schema，供拦截瀑布与工具统一处理；<code>renderPrompt()</code> 才做 <code>{{var}}</code> 插值、去空段、空行连接。这样“谁在什么上下文算的值”可追溯，也让一次请求不必把所有 context 重复插值两次。</div></details>
+  <details class="faq"><summary>同名段在作用域层“遮蔽”了，会不会反而丢了我想要的内容？</summary><div class="body">
+    遮蔽是刻意的“就近优先”。子代理、preset 想让你这层的人格/规则生效，就得盖掉全局；若你希望全局规则也保留，应改用<strong>不同 name</strong> 的段（不同名会并存，都进 system）。同一层里同 name 重复注册则会直接抛错，防止手滑。</div></details>
+  <details class="faq"><summary>我在哪能实际“看见”这些注入？</summary><div class="body">
+    观察请求体/会话事件最直观：<code>session/event</code> 里的 <code>user/message</code>（source 标注 <code>agent-instructions</code>、<code>plugin: @deepseek-ai/dsh-system-prompt</code>）就是被注入的 user 角色内容；system 与 tools 在发往 LLM 的请求 payload 里可见。跟踪 <code>system-prompt/assemble</code> 事件可拦截审查。</div></details>
+
+  <div class="callout tip">
+    <b>想看实例？</b>本仓库根目录就有 <code>AGENTS.md</code> / <code>CODEBUDDY.md</code>——当你让 DSH 读取项目文件时，观察它如何把其中的“文件级指令”作为 <code>&lt;system-reminder&gt;</code> 折进上下文，就是第 04 章阶段 4 的现场。
+  </div>
+
+  <div class="callout key" style="margin-top:26px">
+    <b>全书完。</b>一句话回顾：<strong>DSH 没有“一条”系统提示词，只有“一套装配规则”</strong>——注册（第 01 章）→ 四种原料（02）→ 作用域（03）→ 五阶段注入（04）→ 请求解剖（05）→ 去重快照（06）→ 一切为了缓存（07）。想精简有旋钮（08），想抠字有原文（09），想换玩法有模式（10）。
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch10.html"><span class="dir">◂ 上一章</span><span class="t">10 · 模式差异</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 回到封面</span></a>
+    <a class="pg next" style="opacity:.45;pointer-events:none"><span class="dir">已是最后一章</span><span class="t">全书完 · 谢谢阅读</span></a>
+  </div>
+  <div class="pagenum">— 第 12 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

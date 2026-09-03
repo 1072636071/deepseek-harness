@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>02 · 四种「提示词原料」 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch01.html" data-next="ch03.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第一篇 · 机制篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n">第 02 章</span><span class="part">第一篇 · 机制篇</span></div>
+    <h1>四种「提示词原料」：段 / 上下文 / 工具 / 变量</h1>
+    <p class="lead">一次 <code>assemble()</code> 的返回值 <code>PromptAssembly</code> 有四件套。其中「段」与「工具」进入 <em>system</em>，而「动态上下文」是特殊的——它不进 system，而是被投递成一条独立的 <em>user 角色</em>消息（第 06 章细讲）。</p>
+    <div class="updated">本章对应源码：packages/core/system-prompt/src/index.ts</div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 class="sub">段 section —— 提示词的正文</h3>
+      <p>带 <code>name/order/text</code>。按 <code>order</code> 升序拼接；同号时再按名称的 <strong>code-unit 字典序</strong>（保证任何机器上结果一致）。文本可以是静态字符串，也可以是每次装配都重新求值的函数；正文里可写 <code>{{变量}}</code>，由 render 阶段插值。</p>
+      <pre class="code">harness:identity        order <span class="o">-1000</span>
+harness:source          order <span class="o">-900</span>
+web-surface             order <span class="o">-800</span>
+deployment:persona      order <span class="o">0</span>
+plan:policy             order <span class="o">500</span>
+tool:bash / tool:pwsh   order <span class="o">1000</span>/<span class="o">1010</span>
+tool:read / write/edit  order <span class="o">1100</span>...
+tools:sdk (PTC)         order <span class="o">5000</span>
+deliverable-files       order <span class="o">9000</span>
+structured-output       order <span class="o">9900</span></pre>
+      <p class="sec-lead" style="font-size:13px">↑ 仓库内第一方档位用 <code>FIRST_PARTY_SECTION_ORDER</code> 稀疏预留（相邻差 ≥10），外部插件可用任意有限 order。</p>
+    </div>
+    <div class="card">
+      <h3 class="sub">上下文 context —— 运行时“事实快照”</h3>
+      <p>也是 <code>name/order/text</code>，但不进 system。它描述“当前这一时刻”的可变事实（当前沙箱模式、当前审批策略……），由拥有该事实的插件注册，每次装配现算。</p>
+      <pre class="code">sandbox:policy    order <span class="o">110</span>  <span class="c">// 当前 sandbox 模式</span>
+approval:policy   order <span class="o">115</span>  <span class="c">// 当前审批策略</span>
+subagent:delegation order <span class="o">120</span> <span class="c">// 子代理接到的任务</span></pre>
+      <p style="font-size:13.5px;color:var(--ink-600)">求值为空文本的 context 不产生任何输出——<strong>“事实消失了”就等于“这句话从没说过”</strong>。</p>
+    </div>
+    <div class="card">
+      <h3 class="sub">工具 tools —— 模型能做什么</h3>
+      <p>工具 schema 提供方每次装配时求值，产出模型可见的 <code>ToolSchema[]</code>。大多数工具包让自己的 <code>ToolRuntime</code> 自动注册，无需手动接线。可配置的 <code>toolOrder</code> 决定面向模型的工具排序，其中 <code>&lt;unlisted-tools&gt;</code> 是“其余工具插这里”的占位符（有且只能有一个）。</p>
+      <div class="callout tip" style="margin:6px 0 0"><b>为什么工具也算“提示词的一部分”？</b>对模型而言“知道自己能做什么”和“知道自己该怎么做”是连贯的，所以 <code>assemble()</code> 把二者作为一个整体交付——尽管发给模型时 schema 是独立 wire 字段。</div>
+    </div>
+    <div class="card">
+      <h3 class="sub">变量 variable —— 正文里的活引用</h3>
+      <p>以 <code>{{name}}</code> 出现在段文本里，render 时严格插值。agent-loop 循环层提供 <code>provider/model/cwd</code>，任何插件都能注册自己的“事实”。</p>
+      <pre class="code"><span class="k">ctx</span>.systemPrompt.<span class="k">variable</span>(<span class="s">'cwd'</span>,
+  ({ agent }) =&gt; agent?.session.header.cwd);
+<span class="c">// 段正文可写：当前工作目录为 {{cwd}}</span></pre>
+      <div class="callout warn" style="margin:8px 0 0"><b>严格规则：</b>未注册的、已注册但当前无值的、或畸形 <code>{{…}}</code> 引用都会让渲染直接抛错。DSH 认为“提示词拼错”比“静默出错”更好——畸形提示词会毁掉整段前缀缓存（第 07 章）。</div>
+    </div>
+  </div>
+
+  <h3 class="sub">还有一种「特供」：complete 人格段</h3>
+  <p>任一段可声明 <code>complete: true</code>，表示“不要其他任何段，就用我说的这句当整条系统提示词”。装配仍会跑完（好让工具/上下文/变量可解析），随后这段被恢复为<strong>唯一的提示词段</strong>。同时存在多个有效 complete 段会导致装配失败。</p>
+
+  <div class="card">
+    <h3 class="sub">render 的两条铁律</h3>
+    <div class="kv"><span class="k">去空段</span><span class="v">求值为空的段在 <code>renderPrompt()</code> 里被过滤，剩余段用空行连接。<b>“条件段”就是靠返回空串实现隐身的</b>——这是全书最重要的机制之一（第 06、10 章反复出现）。</span></div>
+    <div class="kv"><span class="k">严格插值</span><span class="v"><code>{{…}}</code> 只按已注册变量解析：未知名、有注册无值、畸形组全部抛错；孤立的 <code>{{</code>（后面没有 <code>}}</code>）视为字面文本；替换进去的值不再二次扫描。</span></div>
+  </div>
+
+  <div class="callout key">
+    <b>本章心法：</b>记住“静态正文 + 活的事实 + 能力清单 + 变量”四件套的分工。后面所有模式与阶段差异，本质上都是<strong>这四种原料在不同条件下的取值变化</strong>。
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch01.html"><span class="dir">◂ 上一章</span><span class="t">01 · 核心心法</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch03.html"><span class="dir">下一章 ▸</span><span class="t">03 · 作用域分层</span></a>
+  </div>
+  <div class="pagenum">— 第 3 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

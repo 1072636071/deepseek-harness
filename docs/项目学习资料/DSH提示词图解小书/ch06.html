@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>06 · 「运行还会注入」 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch05.html" data-next="ch07.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第二篇 · 流转篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n warn" style="background:var(--warn-500)">第 06 章</span><span class="part">第二篇 · 流转篇</span></div>
+    <h1>“运行还会注入”：动态上下文的去重快照机制</h1>
+    <p class="lead">这一章回应你最直接的观察——<strong>为什么每个 step 的请求里都会冒出一段新的 “Current runtime context”</strong>。机制在 <code>agent-loop</code> 的 <code>RuntimeContextProjection</code> 里，简洁又关键。</p>
+    <div class="updated">本章对应源码：packages/core/agent-loop/src/runtime-context.ts</div>
+  </div>
+
+  <div class="timeline">
+    <div class="tl-item"><span class="when">每 STEP 前</span>
+      <h4>① assemble() 求值出“此刻快照”</h4>
+      <p>装配结果里带着 <code>contexts</code>（本次求值的 sandbox/approval…）。agent 调用 <code>project(快照文本, 组成它的各 context)</code> 计算“要不要更新”。</p></div>
+    <div class="tl-item hot"><span class="when">比对 &amp; 决定</span>
+      <h4>② 与上一次保留的快照比对，<b>变了才注入</b></h4>
+      <p><code>RuntimeContextProjection</code> 记住上一次真正发出并仍在 surface 上的快照。若本次文本<b>与上次相同 → 不发</b>；不同（策略切换、沙箱模式变化、首条快照）→ 生成新的 user 快照消息；若本次为空 → 发一句清除标记。</p></div>
+    <div class="tl-item"><span class="when">追加 &amp; 串流</span>
+      <h4>③ 新快照追加进历史，作为本 step 的上下文</h4>
+      <p>快照落在直接 prompt 之后、工具结果之前。它的 <code>source.form:'snapshot'</code> 里还带 <code>sections</code>，方便追溯“这段是谁贡献的”。</p></div>
+  </div>
+
+  <div class="card">
+    <h3 class="sub">核心代码只有四行逻辑</h3>
+    <pre class="code"><span class="c">// packages/core/agent-loop/src/runtime-context.ts</span>
+project(current, sections) {
+  <span class="k">if</span> (this.retained === <span class="k">undefined</span> &amp;&amp; current.length === 0) <span class="k">return</span>;
+  <span class="k">const</span> snapshot = current.length === 0 ? CLEARED : current;
+  <span class="k">if</span> (this.retained?.text === snapshot) <span class="k">return</span>;  <span class="c">// 没变 → 不重复注入</span>
+  <span class="k">return</span> createUserMessage({ content:[{type:<span class="s">'text'</span>,text:snapshot}],
+    source:{ kind:<span class="s">'plugin'</span>, plugin: SOURCE, form:<span class="s">'snapshot'</span>, sections } });
+}</pre>
+  </div>
+
+  <h3 class="sub">三种情形，三种结果</h3>
+  <div style="overflow:auto"><table class="tbl">
+    <thead><tr><th>情形</th><th>上次快照状态</th><th>本次求值结果</th><th>投影动作</th></tr></thead>
+    <tbody>
+      <tr><td><b>冷启动无上下文</b></td><td>从未有过</td><td>空文本</td><td>什么都不发——<code>retained===undefined &amp;&amp; 空</code> 直接返回。</td></tr>
+      <tr><td><b>稳定期</b></td><td>有</td><td>与上次相同</td><td>不发——<strong>去重生效</strong>，零额外 token。</td></tr>
+      <tr><td><b>事实切换</b></td><td>有</td><td>不同文本</td><td>发新快照（含“supersedes earlier”声明，模型自动以最新为准）。</td></tr>
+      <tr><td><b>事实清空</b></td><td>有</td><td>空文本</td><td>发清除标记：<i>"Current runtime context: none. Earlier runtime-context snapshots no longer apply."</i></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout warn">
+    <b>别把“每次都注入”理解成“每次都堆一坨”。</b>同一状态稳定时，装配虽然每次都算，但投影会因文本相同而<strong>不产生新消息</strong>——真正触发注入的是策略/模式这类<strong>“事实级”切换</strong>。它特意把“当前值”放在历史尾部走，就是为了不动 system 前缀、保住 KV-Cache（第 07 章）。
+  </div>
+
+  <div class="callout tip">
+    <b>下一章：</b>整个设计都指向同一个工程目标——为什么“稳定前缀”这么值钱？
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch05.html"><span class="dir">◂ 上一章</span><span class="t">05 · 一次请求的解剖</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch07.html"><span class="dir">下一章 ▸</span><span class="t">07 · KV-Cache 设计动机</span></a>
+  </div>
+  <div class="pagenum">— 第 7 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

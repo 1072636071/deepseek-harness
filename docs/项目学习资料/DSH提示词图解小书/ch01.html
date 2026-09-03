@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>01 · 核心心法：注册表 + 装配流水线 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="index.html" data-next="ch02.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第一篇 · 机制篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n">第 01 章</span><span class="part">第一篇 · 机制篇</span></div>
+    <h1>核心心法：一个注册表，一条装配流水线</h1>
+    <p class="lead">在 DSH 里，任何想“对模型说一句话”的插件，都不直接拼字符串，而是往 <code>ctx.systemPrompt</code> 这个<strong>注册表</strong>里“报名登记”。真正把话拼给模型的工作，统一交给 <code>assemble() → renderPrompt()</code> 这条流水线。</p>
+    <div class="updated">本章对应源码：packages/core/system-prompt · packages/core/agent-loop</div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 class="sub">① 登记（任何时候、任意插件）</h3>
+      <p>工具包、沙箱策略、审批服务、文件引用……各自在加载时调用注册 API，声明“我想在系统提示词的哪一档位、说一段什么话”。登记是一次性的；能不能生效、说成什么样，取决于调用方所在的<strong>作用域</strong>（第 03 章）与装配时的<strong>动态状态</strong>。</p>
+      <pre class="code"><span class="c">// 任意插件，贡献一段「有序提示词段」</span>
+<span class="k">ctx</span>.systemPrompt.<span class="k">section</span>({
+  name: <span class="s">'tool:bash'</span>,
+  order: <span class="o">1000</span>,            <span class="c">// 档位：决定它排在第几段</span>
+  text: <span class="s">'Prefer bash for file &amp; process ops.'</span>,
+})</pre>
+    </div>
+    <div class="card">
+      <h3 class="sub">② 装配（每个 step 一次）</h3>
+      <p>agent 每次要发请求前，调用 <code>systemPrompt.assemble()</code>：合并全局层与该作用域层 → 按数值顺序排好段 → 求值每个变量与动态上下文 → 跑一个可拦截的 <code>system-prompt/assemble</code> 瀑布 → 返回“四件套”（第 02 章）。随后 <code>renderPrompt()</code> 把段拼成 system 文本，工具 schema 作为独立 wire 字段发给模型。</p>
+      <pre class="code"><span class="c">// packages/core/agent-loop/src/agent.ts</span>
+<span class="k">const</span> assembly = <span class="k">await</span> loopCtx.systemPrompt
+  .<span class="k">assemble</span>(<span class="s">assembleContextFor</span>(this, signal));
+...
+<span class="k">const</span> system = <span class="k">renderPrompt</span>(assembly); <span class="c">// 最终 system 文本</span></pre>
+    </div>
+  </div>
+
+  <div class="callout key">
+    <b>关键设计：</b>「登记」和「生效」被刻意拆开。这让 DSH 的提示词像一个<strong>可插拔总线的下游</strong>：任何插件都能贡献一段，而排序、遮蔽、拦截、变量插值都集中在装配点统一处理——这正是“一切皆插件 + Cordis 事件流水线”哲学的缩影。
+  </div>
+
+  <h3 class="sub">流水线上的四道工序</h3>
+  <div class="pipeline">
+    <div class="stage"><div class="badge"><span class="ph" style="background:#0c2a5e">合并</span><span class="sub">merge</span></div>
+      <div class="body">全局层 + 请求作用域的层合并；<b>作用域同名项遮蔽全局</b>（第 03 章）。变量也按“离得越近越优先”解析。</div></div>
+    <div class="flowarrow">▼</div>
+    <div class="stage"><div class="badge"><span class="ph" style="background:#12428f">排序</span><span class="sub">order</span></div>
+      <div class="body">段按 <code>order</code> 升序，同号再按名称的 <b>code-unit 字典序</b>——保证任何机器上结果一致。第一方段位稀疏预留（−1000 ~ 9900，相邻差 ≥10），外部插件插进来不挤动别人。</div></div>
+    <div class="flowarrow">▼</div>
+    <div class="stage"><div class="badge"><span class="ph" style="background:#1f6feb">求值</span><span class="sub">evaluate</span></div>
+      <div class="body">静态文本直接用；<b>函数文本在每次装配时重新求值</b>——这是“提示词能跟着运行状态变”的关键机制（第 06 章）。</div></div>
+    <div class="flowarrow">▼</div>
+    <div class="stage"><div class="badge"><span class="ph" style="background:#b45309">拦截</span><span class="sub">waterfall</span></div>
+      <div class="body"><code>system-prompt/assemble</code> 瀑布事件：任何监听者可在交付前审查/改写装配结果；返回值是权威的。唯一例外：<code>complete</code> 段在瀑布后恢复原样（第 02 章）。</div></div>
+  </div>
+
+  <div class="callout tip">
+    <b>下一章：</b>装配产物 <code>PromptAssembly</code> 里到底有什么？四种“原料”各自流向请求的哪个部位——其中一种最特殊，它根本不进 system。
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch02.html"><span class="dir">下一章 ▸</span><span class="t">02 · 四种「提示词原料」</span></a>
+  </div>
+  <div class="pagenum">— 第 2 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

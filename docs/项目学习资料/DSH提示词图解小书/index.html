@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DSH 提示词注入机制 · 图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body>
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">DeepSeek Harness · 项目学习资料</span>
+    <a class="home" href="index.html">封面 / 目录</a>
+  </div>
+</header>
+
+<div class="cover">
+  <div class="hero">
+    <div class="kicker">DEEPSEEK HARNESS · 项目学习资料</div>
+    <h1>DSH 的「系统提示词」<br>是怎么一步步注入的</h1>
+    <p class="sub">你以为模型收到的是一条固定系统提示词？其实是一座<strong>每次对话都在动态搭建的积木塔</strong>。
+      这本小书把注册、分层、组装、运行期再注入的完整链路拆开给你看——所有论断都标注源码出处。</p>
+    <div class="meta">
+      <span>📖 11 章 · 约 25 分钟读完</span>
+      <span>🔖 基线 dsh 0.1.2-alpha</span>
+      <span>📅 2026-09-03</span>
+    </div>
+    <div class="spine"></div>
+  </div>
+
+  <main class="wrap" style="padding-top:10px">
+    <div class="toc-part"><span class="t">第一篇 · 机制篇 —— 拼装的规则</span></div>
+    <div class="chaplist">
+      <a class="chapcard" href="ch01.html">
+        <span class="no">01</span>
+        <span><span class="t">核心心法：一个注册表，一条装配流水线</span>
+        <p>插件只负责“报名登记”，真正拼话给模型的是 assemble() → renderPrompt()。</p></span>
+      </a>
+      <a class="chapcard" href="ch02.html">
+        <span class="no">02</span>
+        <span><span class="t">四种「提示词原料」：段 / 上下文 / 工具 / 变量</span>
+        <p>一次 assemble 的四件套，各自进入请求的不同部位；还有特供的 complete 人格段。</p></span>
+      </a>
+      <a class="chapcard" href="ch03.html">
+        <span class="no">03</span>
+        <span><span class="t">作用域分层：全局一套，agent 各自遮蔽</span>
+        <p>为什么不同 agent / 子任务看到的提示词不一样——同名段的“就近优先”规则。</p></span>
+      </a>
+    </div>
+
+    <div class="toc-part"><span class="t">第二篇 · 流转篇 —— 注入的时刻</span></div>
+    <div class="chaplist">
+      <a class="chapcard" href="ch04.html">
+        <span class="no">04</span>
+        <span><span class="t">注入全景：从「启动」到「每一步」的五个阶段</span>
+        <p>阶段 0~4 全景图：越到后面越热闹，运行中的“再注入”才是重头戏。</p></span>
+      </a>
+      <a class="chapcard" href="ch05.html">
+        <span class="no">05</span>
+        <span><span class="t">一次真实请求的解剖：消息堆栈</span>
+        <p>system、tools、直接 prompt、workspace 指令、runtime 快照在请求里的真实排布。</p></span>
+      </a>
+      <a class="chapcard" href="ch06.html">
+        <span class="no warn">06</span>
+        <span><span class="t">「运行还会注入」：动态上下文的去重快照</span>
+        <p>为什么每个 step 都可能冒出新的 "Current runtime context"——变了才注入的投影机制。</p></span>
+      </a>
+    </div>
+
+    <div class="toc-part"><span class="t">第三篇 · 设计篇 —— 为什么这样造</span></div>
+    <div class="chaplist">
+      <a class="chapcard" href="ch07.html">
+        <span class="no">07</span>
+        <span><span class="t">设计动机：稳定前缀 × KV-Cache</span>
+        <p>“稳态的进 system，瞬态的走 user 尾部”——分层注入背后的成本账。</p></span>
+      </a>
+      <a class="chapcard" href="ch08.html">
+        <span class="no">08</span>
+        <span><span class="t">实测：DSH 自带提示词到底啰不啰嗦？</span>
+        <p>逐段量出来的结论：刻意反啰嗦设计；真正的“大头”另有其人。附精简旋钮清单。</p></span>
+      </a>
+    </div>
+
+    <div class="toc-part"><span class="t">第四篇 · 原文与模式篇 —— 逐字细节</span></div>
+    <div class="chaplist">
+      <a class="chapcard" href="ch09.html">
+        <span class="no acc">09</span>
+        <span><span class="t">原文库：各阶段真实注入的提示词</span>
+        <p>从源码里原样抄出的真实文本——五个阶段逐一开箱，含沙箱三档、审批两档全文。</p></span>
+      </a>
+      <a class="chapcard" href="ch10.html">
+        <span class="no acc">10</span>
+        <span><span class="t">模式差异：标准 / PTC / Plan / 沙箱 / 审批</span>
+        <p>native 与 PTC 的本质区别（工具变成 TS 声明！），以及各模式“换段不换塔”的统一心法。</p></span>
+      </a>
+      <a class="chapcard" href="ch11.html">
+        <span class="no">11</span>
+        <span><span class="t">附录：源码地图与常见疑问</span>
+        <p>每个机制对应的源码文件速查表 + 五个高频 FAQ。</p></span>
+      </a>
+    </div>
+
+    <div style="text-align:center;margin:44px 0 10px">
+      <a class="chapcard" href="ch01.html" style="display:inline-flex;align-items:center;gap:12px;padding:15px 34px">
+        <span class="no" style="background:var(--brand-500)">▶</span>
+        <span class="t" style="font-size:16px">开始阅读 · 第 01 章</span>
+      </a>
+      <p style="font-size:12px;color:var(--ink-400);margin-top:14px">阅读时可使用键盘 ← → 翻页</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

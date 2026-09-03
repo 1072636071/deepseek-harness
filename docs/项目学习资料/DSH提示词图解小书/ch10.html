@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10 · 模式差异 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch09.html" data-next="ch11.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第四篇 · 原文与模式篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n acc" style="background:var(--accent-700)">第 10 章</span><span class="part">第四篇 · 原文与模式篇</span></div>
+    <h1>模式差异：标准 / PTC / Plan / 沙箱 / 审批</h1>
+    <p class="lead">DSH 的“模式”分好几层，互不冲突：<strong>工具呈现模式</strong>（工具怎么给模型）、<strong>Plan 模式</strong>（先计划后动手）、<strong>沙箱模式</strong>（文件能写到哪）、<strong>审批策略</strong>（危险动作问不问人）。每种模式本质上都是“换一段注入的提示词”。</p>
+    <div class="updated">本章对应源码：core/tools（native/ptc/both）· plan/plan-mode · sandbox/sandbox-policy · interaction/user-approval</div>
+  </div>
+
+  <h3 class="sub">工具呈现模式：native / ptc / both —— 差别最大的一种</h3>
+  <div class="grid3">
+    <div class="minicard"><div class="t"><span class="dot" style="background:#16a34a"></span>native（默认）</div>
+      <p>所有工具以 JSON schema 走 <code>tools</code> wire 字段，模型直接发起工具调用。<code>tools:sdk</code> 段返回空。你平时用的就是这个。</p></div>
+    <div class="minicard"><div class="t"><span class="dot" style="background:#b45309"></span>ptc</div>
+      <p>Programmatic Tool Calling：模型只能直接调用 <code>run_code</code> 一个工具，其余工具<strong>以 TypeScript/Python 类型声明的形式写进 system</strong>，在代码里 <code>await tools.name(args)</code> 调用。多次工具调用合并成一次模型调用，中间结果不进历史。</p></div>
+    <div class="minicard"><div class="t"><span class="dot" style="background:#1f6feb"></span>both</div>
+      <p>两种呈现并存：wire schema 照发，SDK 声明段也注入。适合过渡期或需要对比评测的场景。可由部署默认或 <code>presentAs()</code> 按作用域声明。</p></div>
+  </div>
+
+  <div class="card">
+    <h3 class="sub">PTC 模式注入的两段关键文本</h3>
+    <pre class="code"><span class="c">// ptc 段（order 800，在工具指引之前）：</span>
+`run_code` is the only tool you can call directly — a tool call naming any
+other tool fails. Reach every tool the SDK declares below from inside the program.
+
+<span class="c">// tools:sdk 段（order 5000）：把全部工具渲染成 TS 声明</span>
+interface ToolArgsMap  { read: {file_path: string, ...}; ... }
+interface ToolOutputMap{ read: {...}; ... }
+type ToolName = keyof ToolOutputMap
+declare const tools: { [K in ToolName]: (args: ToolArgsMap[K]) =&gt; Promise&lt;ToolOutputMap[K]&gt; }</pre>
+    <p style="margin:8px 0 0">声明由 <code>renderToolsSdk</code>（TS）/ <code>renderToolsSdkPy</code>（Python）生成，<strong>工具按字典序输出、结果字节级确定</strong>——同一工具集每次渲染完全一致（第 07 章）。两套语言文案配对维护，防止“TS 的 schema 配 Python 的 SDK”这种错位。模型还能得到 bash 用法示例（<code>run_code({ code: "return await tools.bash({...})" ...})</code>）。PTC 段特意排在工具指引之前——<em>模型先读到“哪些工具能调”，再读到“每个工具是干嘛的”</em>。</p>
+  </div>
+
+  <h3 class="sub">其余模式对照表</h3>
+  <div style="overflow:auto"><table class="tbl">
+    <thead><tr><th>模式</th><th>档位</th><th>注入方式</th><th>注入内容要点</th></tr></thead>
+    <tbody>
+      <tr><td><b>Plan 模式</b></td><td>开 / 关（<code>/plan</code> 切换）</td><td><code>plan:policy</code> 段，<b>条件渲染</b></td><td>文本由<b>部署方 config 提供</b>（<code>{ section }</code>，非空校验，未知键报错）；开关状态从 <code>plan/mode</code> 事件折叠得出，未激活返回空段。</td></tr>
+      <tr><td><b>沙箱模式</b></td><td>read-only（<b>默认</b>）/ workspace-write / danger-full-access</td><td><code>sandbox:policy</code> <b>runtime 快照</b></td><td>三段原文见第 09 章；会话级切换经 <code>sandbox/mode</code> 事件，下一 step 快照自动刷新；escalation 工具参数可单次越权（需审批）。</td></tr>
+      <tr><td><b>审批策略</b></td><td>ask（默认）/ never</td><td><code>approval:policy</code> <b>runtime 快照</b></td><td>ask：可向 answerer 提问、无人应答则 fail-closed；never：自动拒绝并明说“别再设 <code>sandbox_permissions</code>”。</td></tr>
+      <tr><td><b>子代理</b></td><td>普通 / 后台 / 结构化</td><td>child 作用域：delegation 上下文 + 遮蔽 persona（+ report 段 / structured_output 段）</td><td>每个 child 独立 scope 互不污染；结构化 child 必须以 <code>structured_output</code> 工具调用收尾，纯文本不算结果。</td></tr>
+      <tr><td><b>团队</b></td><td>Lead / 成员角色</td><td><code>team:policy</code> 作用域段</td><td>策略 + “你的角色/名字/Team id”；只有 Lead 能 <code>spawn_teammate</code>。</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout key">
+    <b>统一心法：</b>在 DSH 里“切换模式”几乎从不重写提示词——它只是<strong>让某些段变空、让某些快照换词</strong>。模式开关是数据（事件折叠 / config 求值），提示词是这些数据的纯函数投影。这就是为什么任何模式切换都不破坏 system 前缀缓存（第 07 章）。
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch09.html"><span class="dir">◂ 上一章</span><span class="t">09 · 原文库</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch11.html"><span class="dir">下一章 ▸</span><span class="t">11 · 附录：源码地图</span></a>
+  </div>
+  <div class="pagenum">— 第 11 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>

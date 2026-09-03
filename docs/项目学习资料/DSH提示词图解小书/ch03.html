@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>03 · 作用域分层 · DSH 提示词图解小书</title>
+<link rel="stylesheet" href="assets/book.css">
+</head>
+<body data-prev="ch02.html" data-next="ch04.html">
+<header class="booktop">
+  <div class="in">
+    <a class="logo" href="index.html"><span class="mark">DSH</span><b>提示词图解小书</b></a>
+    <span class="part">第一篇 · 机制篇</span>
+    <a class="home" href="index.html">目录</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="chaphead">
+    <div class="chapno"><span class="n">第 03 章</span><span class="part">第一篇 · 机制篇</span></div>
+    <h1>作用域分层：全局一套，agent / 子代理各自遮蔽</h1>
+    <p class="lead">提示词是<strong>带作用域(scope)</strong>的：插件通过 <code>agent.ctx</code>（某个具体 agent 的上下文）注册，就只影响那个 agent，并可<strong>遮蔽</strong>同名全局项。这解释了“为什么不同 agent / 不同子任务，看到的人格和工具指引不一样”。</p>
+    <div class="updated">本章对应源码：packages/core/system-prompt · packages/preset/persona · packages/subagent</div>
+  </div>
+
+  <div class="callout warn">
+    <b>遮蔽 ≠ 并列。</b>同名段/变量/上下文，作用域层会<strong>盖掉</strong>全局层，而不是同时出现两条。你常看到的“梁神模式”“某 preset 人格”，本质就是在一个 agent 作用域里用同名的 <code>deployment:persona</code> 段，把部署全局人格替换掉——<strong>正因为两边都叫同一个名字，替换才成立而不是重复</strong>。
+  </div>
+
+  <div class="grid3">
+    <div class="minicard"><div class="t"><span class="dot" style="background:#64748b"></span>全局层 global</div>
+      <p>注册在无作用域的 <code>ctx</code>：harness 身份、部署人格、工具段等默认对<strong>所有</strong> agent 生效。范围最大、优先级最低。</p></div>
+    <div class="minicard"><div class="t"><span class="dot" style="background:#1f6feb"></span>agent 作用域</div>
+      <p>通过 <code>agent.ctx</code> 注册：一个人格 preset、一份工具指引只作用于此 agent，并遮蔽全局同名项。装配时“离得越近的层”优先。</p></div>
+    <div class="minicard"><div class="t"><span class="dot" style="background:#06b6d4"></span>子代理作用域 child</div>
+      <p>主代理派生子代理时，会给 child 一个独立 scope：注入 delegation 上下文与子代理专属 persona。各子任务互不污染。</p></div>
+  </div>
+
+  <div class="card">
+    <h3 class="sub">现场代码：子代理如何换人格</h3>
+    <pre class="code"><span class="c">// packages/subagent/subagent/src/child-agent.ts</span>
+childCtx.systemPrompt.<span class="k">context</span>({
+  name: <span class="s">'subagent:delegation'</span>, order: <span class="o">120</span>,
+  text: <span class="s">SUBAGENT_DELEGATION_CONTEXT</span> });
+childCtx.systemPrompt.<span class="k">section</span>({
+  name: <span class="s">'deployment:persona'</span>, order: PERSONA_ORDER,
+  text: composition.persona });  <span class="c">// 同名段 → 遮蔽全局人格</span></pre>
+    <p style="margin:8px 0 0">而 <code>packages/preset/persona</code> 是一个<strong>纯作用域行</strong>：它不能全局挂载（会和注册表自己的 persona 登记撞名报错），只能放进 agent preset——这个“限制”正是它的存在理由：<strong>agent 预设如果不能改人格，就只能改工具、改不了身份</strong>。</p>
+  </div>
+
+  <h3 class="sub">遮蔽的边界与安全网</h3>
+  <div class="kv"><span class="k">同层重复注册</span><span class="v">同一层里 <code>name</code> 重复直接抛错，错误信息还会提示“要按 agent 覆盖请走 <code>agent.ctx</code>”——防止手滑。</span></div>
+  <div class="kv"><span class="k">瀑布按作用域筛</span><span class="v"><code>system-prompt/assemble</code> 监听者只收到自己作用域的装配；但 <code>system-prompt/change</code> 注册表变更通知<b>刻意不筛</b>——全局变更影响每个作用域，人人需要知道。</span></div>
+  <div class="kv"><span class="k">警告</span><span class="v">遮蔽是刻意的“就近优先”。想让全局规则也保留，就用<strong>不同 name</strong> 的段（不同名会并存）；同名的效果永远是“二选一”。</span></div>
+
+  <div class="callout key">
+    <b>本章心法：</b>作用域分层让“一份二进制跑出千种 agent”成为可能——人格 preset、子代理委托、团队角色，全都只是<strong>不同作用域里的一批同名/异名段</strong>。
+  </div>
+
+  <div class="callout tip">
+    <b>下一章进入流转篇：</b>这些段在什么时刻、以什么顺序真正到达模型面前？——五个阶段的注入全景图。
+  </div>
+</main>
+
+<nav class="pager">
+  <div class="rule"></div>
+  <div class="row">
+    <a class="pg" href="ch02.html"><span class="dir">◂ 上一章</span><span class="t">02 · 四种提示词原料</span></a>
+    <a class="pg toc" href="index.html"><span class="dir">📖 目录</span></a>
+    <a class="pg next" href="ch04.html"><span class="dir">下一章 ▸</span><span class="t">04 · 注入全景五阶段</span></a>
+  </div>
+  <div class="pagenum">— 第 4 页 / 共 12 页 —</div>
+</nav>
+<script>
+addEventListener('keydown',e=>{if(e.target.closest('input,textarea,select'))return;
+const b=document.body,p=b.dataset.prev,n=b.dataset.next;
+if(e.key==='ArrowLeft'&&p)location.href=p;if(e.key==='ArrowRight'&&n)location.href=n;});
+</script>
+</body>
+</html>
