@@ -13,10 +13,8 @@ import type {
 // Type-only: pulls ui-sidebar's SlotMap merge (the 'sidebar.settings' entry)
 // into every program that sees this contract.
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
-// Type-only: pulls the settings slot declarations the shell renders into, the
-// settings Context merge, and the `SettingsNavRequest` the shell reads from
-// `ctx.uiSettingsNav` — all from one module import.
-import type { SettingsNavRequest } from '@deepseek-ai/dsh-client-ui-settings/client'
+// Type-only: pulls the settings slot declarations the shell renders into.
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /** One nav row projected from a settings.section registration's options. */
 export interface SettingsSectionRow {
@@ -46,8 +44,6 @@ export type SettingsRootInjected = {
     sections: HostObservable<readonly SettingsSectionRow[]>
     /** settings.onboarding ledger projected into coordinator order. */
     onboardingSteps: HostObservable<readonly SettingsOnboardingStep[]>
-    /** Pending cross-plugin request to open the panel on one section (from `ctx.uiSettingsNav`). */
-    nav: HostObservable<SettingsNavRequest | null>
   }
 }
 

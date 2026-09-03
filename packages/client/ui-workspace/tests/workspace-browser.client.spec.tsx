@@ -16,18 +16,7 @@ import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
 import { zh } from '../src/client/locales.ts'
 
 afterEach(cleanup)
-beforeEach(async () => {
-  localStorage.clear()
-  // The seed instance may rehydrate a previous test's pending frame write, so
-  // reset every persisted field explicitly before the tests rehydrate it.
-  const seed = createWorkspaceViewStore().create()
-  seed.actions.setGroupBy('workspace')
-  seed.actions.setOrderBy('manual')
-  seed.actions.retainAccountKeys([])
-  // Write-back is frame-batched; components below rehydrate from storage, so
-  // settle the seed write before each test.
-  await waitFor(() => { expect(localStorage.getItem('dsh.workspace.view.v5')).not.toBeNull() })
-})
+beforeEach(() => { localStorage.clear(); createWorkspaceViewStore().create().actions.setOrderBy('manual') })
 
 // The seat's key domain is workspace ∪ common; the stub mirrors the real
 // lookup chain (namespace, then common vocabulary, then the key).
@@ -234,11 +223,6 @@ describe('WorkspaceBrowser', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: '手动排序' }))
     fireEvent.dragStart(one, { dataTransfer: dragData() })
     fireDrag(three, 'drop', 180)
-    // Write-back is frame-batched; settle before the remount rehydrates.
-    await waitFor(() => {
-      expect(JSON.parse(localStorage.getItem('dsh.workspace.view.v5')!))
-        .toMatchObject({ groupBy: 'flat', orderBy: 'manual' })
-    })
     b.view.unmount()
 
     const restored = mount({ useSessions: hook(sessions), useWorkspaces: hook(workspaces) })
@@ -1072,11 +1056,6 @@ describe('WorkspaceBrowser', () => {
     expect(b.store.getSnapshot().sessionOrderByAccount[UNGROUPED_KEY]).toEqual(['two', 'three', 'one'])
     expect(insertSessionBefore).not.toHaveBeenCalled()
 
-    // Write-back is frame-batched; settle before the remount rehydrates.
-    await waitFor(() => {
-      expect(JSON.parse(localStorage.getItem('dsh.workspace.view.v5')!).sessionOrderByAccount[UNGROUPED_KEY])
-        .toEqual(['two', 'three', 'one'])
-    })
     b.view.unmount()
     const restored = mount({
       useSessions: hook(sessions),

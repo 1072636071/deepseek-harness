@@ -210,48 +210,6 @@ describe('chain semantics', () => {
     expect(reminders(agent)).toHaveLength(1) // all three canonicalize identically
   })
 
-  it('keys chains per (tool, arguments): alternating tools never accumulates a run', async () => {
-    const ctx = await harness()
-    const adapter = new MockAdapter([
-      toolCallResponse('c1', 'probe', { q: 1 }),
-      toolCallResponse('c2', 'other', { q: 1 }),
-      toolCallResponse('c3', 'probe', { q: 1 }),
-      toolCallResponse('c4', 'other', { q: 1 }),
-      textResponse('done'),
-    ])
-    ctx.llm.registerAdapter(['mock'], adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    await waitForIdle(ctx, agent)
-
-    // Identical canonical arguments on DIFFERENT tools are distinct chains;
-    // the tool name cannot be absorbed into the arguments key.
-    expect(reminders(agent)).toHaveLength(0)
-  })
-
-  it('chains calls whose canonical arguments embed an escaped NUL', async () => {
-    const ctx = await harness({ thresholds: [2] })
-    const nul = String.fromCharCode(0)
-    const adapter = new MockAdapter([
-      toolCallResponse('c1', 'probe', { q: `a${nul}b` }),
-      toolCallResponse('c2', 'probe', { q: `a${nul}b` }),
-      toolCallResponse('c3', 'other', { q: `b${nul}c` }),
-      toolCallResponse('c4', 'other', { q: `b${nul}c` }),
-      textResponse('done'),
-    ])
-    ctx.llm.registerAdapter(['mock'], adapter)
-    const agent = ctx.agentLoop.create(SessionId('a1'), { provider: 'mock', model: 'mock' })
-    agent.followup(createUserMessage({ content: [{ type: 'text', text: 'go' }], source: { kind: 'user' } }))
-    await waitForIdle(ctx, agent)
-
-    // JSON.stringify escapes a raw NUL, so the NUL delimiter in the chain key
-    // stays unambiguous even for NUL-bearing arguments.
-    const found = reminders(agent)
-    expect(found).toHaveLength(2)
-    expect(found[0]!.source).toEqual(guardSource('probe', 2))
-    expect(found[1]!.source).toEqual(guardSource('other', 2))
-  })
-
   it('keys chains per agent: one agent repeating never trips another', async () => {
     const ctx = await harness()
     ctx.llm.registerAdapter(['mock-a'], new MockAdapter([

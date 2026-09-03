@@ -34,26 +34,6 @@ export const GREP_MAX_MATCHES = 250
  */
 export const GREP_MAX_LINE_BYTES = 2000
 
-/**
- * One retention pass per canonical match list: the runtime calls `render` and
- * `presentationMeta` back to back with the same value object, and each used to
- * rebuild the per-line preview retainer over every match. Keyed on the value's
- * `matches` array identity — safe because the tools runtime deep-freezes every
- * published output value (`snapshotToolValue` in `@deepseek-ai/dsh-tools`) and
- * the caps are fixed per plugin instance, so one array cannot be reused under
- * different budgets.
- */
-const retainedByMatches = new WeakMap<GrepMatch[], RetainedItems<GrepMatch>>()
-
-function retainOnce(matches: GrepMatch[], caps: GrepToolCaps): RetainedItems<GrepMatch> {
-  let retained = retainedByMatches.get(matches)
-  if (retained === undefined) {
-    retained = retainGrepMatches(matches, caps.maxMatches, caps.maxLineBytes)
-    retainedByMatches.set(matches, retained)
-  }
-  return retained
-}
-
 /** Resolved grep-tool caps — plugin config after defaulting (see `Config` in index.ts). */
 export interface GrepToolCaps {
   /** Max flat matches retained inline; later matches go to the formatted spill file. */
@@ -301,7 +281,8 @@ export function applyGrepTool(ctx: Context, caps: GrepToolCaps): void {
   const tool = defineTool({
     name: 'grep',
     description: 'Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. '
-      + `Returns the first ${caps.maxMatches} matches inline; a capped result reports where the complete match list was saved.`,
+      + `Returns the first ${caps.maxMatches} matches inline; a capped result reports where the complete match list was saved. `
+      + 'Use read on a matched file for surrounding context.',
     parameters: {
       pattern: { type: 'string', required: true, description: 'Regular expression to search for (ripgrep syntax).' },
       path: { type: 'string', description: 'File or directory to search. Defaults to the session workspace; a relative path resolves against it.' },
@@ -330,10 +311,10 @@ export function applyGrepTool(ctx: Context, caps: GrepToolCaps): void {
       },
       render: (_args, value) => [{
         type: 'text',
-        text: formatRetainedGrep(retainOnce(value.matches, caps)),
+        text: formatRetainedGrep(retainGrepMatches(value.matches, caps.maxMatches, caps.maxLineBytes)),
       }],
       presentationMeta: (_args, value) =>
-        grepSearchMeta(retainOnce(value.matches, caps), caps.maxMetaBytes),
+        grepSearchMeta(retainGrepMatches(value.matches, caps.maxMatches, caps.maxLineBytes), caps.maxMetaBytes),
     },
     async execute(args, exec) {
       const input = parseGrepArgs(args)
@@ -375,7 +356,7 @@ export function applyGrepTool(ctx: Context, caps: GrepToolCaps): void {
       kind: 'accept',
       content: [{
         type: 'text',
-        text: formatRetainedGrep(retainOnce(matches, caps), spillRef),
+        text: formatRetainedGrep(retainGrepMatches(matches, caps.maxMatches, caps.maxLineBytes), spillRef),
       }],
       ...decision.additionalContexts !== undefined ? { additionalContexts: decision.additionalContexts } : {},
     }

@@ -265,25 +265,15 @@ export class WebServer extends Service {
         this.upgradedSockets.delete(socket)
       })
       let route: WebUpgradeRoute | undefined
-      let upgradePath = ''
       try {
         /* v8 ignore next -- node:http always sets url on server requests. */
-        upgradePath = new URL(req.url ?? '/', 'http://x').pathname
-        route = this.upgrades.get(upgradePath)
+        route = this.upgrades.get(new URL(req.url ?? '/', 'http://x').pathname)
       } catch (error) {
         this.ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
         socket.destroy()
         return
       }
       if (route === undefined) {
-        // [diag] An unmatched upgrade path is destroyed with no HTTP response,
-        // surfacing in the browser as a `WebSocket ... failed:` with an empty
-        // reason. Log the miss plus the live upgrade set so a missing downlink
-        // route (e.g. apiProxy unresolved, so client-connection registered none)
-        // is visible server-side instead of silent. (console: ctx.logger only buffers.)
-        console.warn(
-          `webserver: no upgrade route for "${upgradePath}"; registered upgrades = [${[...this.upgrades.keys()].join(', ')}]`,
-        )
         socket.destroy()
         return
       }
@@ -305,9 +295,6 @@ export class WebServer extends Service {
         this.server.off('error', reject)
         this.server.on('error', (err) => { this.ctx.logger.error(err) })
         this.listenedPort = (this.server.address() as AddressInfo).port
-        // [diag] Confirm the gateway actually bound and to which authority; the
-        // browser downlinks must target this host:port or the handshake is refused.
-        console.warn(`webserver: listening on http://${this.config.host}:${String(this.listenedPort)}`)
         resolve()
       })
     })

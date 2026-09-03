@@ -15,10 +15,6 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import {
-  disposeProviderChild,
-  ProviderRunFailure,
-  providerFailureDiagnostic,
-  providerTextTask,
   settleRunResult,
   subprocessRunHandle,
   type SubagentResult,
@@ -36,7 +32,8 @@ import {
   type CodexWireFailureFacts,
 } from './wire.ts'
 
-export { DEFAULT_DISPOSE_GRACE_MS } from '@deepseek-ai/dsh-subagent'
+/** Default POSIX grace between subprocess termination tiers. */
+export const DEFAULT_DISPOSE_GRACE_MS = 3_000
 
 interface CodexPackageManifest {
   readonly bin: {
@@ -88,22 +85,34 @@ interface CodexFailureFacts {
 }
 
 function failureDiagnostic(facts: CodexFailureFacts): string {
-  return providerFailureDiagnostic({
-    label: 'Product subagent failure',
-    subject: 'product: Codex',
-    fields: [
-      ['stage', facts.stage],
-      ['category', facts.category],
-      ['HTTP status', facts.httpStatus],
-      ['exit code', facts.outcome?.exitCode],
-      ['signal', facts.outcome?.signal],
-    ],
-  })
+  const fields = [
+    'product: Codex',
+    `stage: ${facts.stage}`,
+    `category: ${facts.category}`,
+  ]
+  if (facts.httpStatus !== undefined) {
+    fields.push(`HTTP status: ${facts.httpStatus}`)
+  }
+  const processFields = [
+    ['exit code', facts.outcome?.exitCode],
+    ['signal', facts.outcome?.signal],
+  ] as const
+  for (const [label, value] of processFields) {
+    if (value !== null && value !== undefined) fields.push(`${label}: ${value}`)
+  }
+  return `Product subagent failure (${fields.join('; ')})`
 }
 
-class CodexRunFailure extends ProviderRunFailure<CodexFailureFacts> {
-  constructor(facts: CodexFailureFacts, cause?: unknown) {
-    super('subagent-codex', facts, failureDiagnostic(facts), cause)
+class CodexRunFailure extends Error {
+  constructor(
+    readonly facts: CodexFailureFacts,
+    cause?: unknown,
+  ) {
+    super(
+      `subagent-codex: ${failureDiagnostic(facts)}`,
+      cause === undefined ? undefined : { cause },
+    )
+    this.name = 'CodexRunFailure'
   }
 }
 
@@ -156,7 +165,20 @@ function thrown(value: unknown): Error {
  * @returns the exact non-empty text block sequence.
  */
 export function textTask(prompt: readonly ContentBlock[]): string[] {
-  return providerTextTask(prompt, 'subagent-codex')
+  if (prompt.length === 0) {
+    throw new Error('subagent-codex: the one-shot task must contain only text blocks')
+  }
+  const texts: string[] = []
+  for (const block of prompt) {
+    if (block.type !== 'text') {
+      throw new Error('subagent-codex: the one-shot task must contain only text blocks')
+    }
+    texts.push(block.text)
+  }
+  if (texts.every(text => text.trim().length === 0)) {
+    throw new Error('subagent-codex: the one-shot task must not be empty')
+  }
+  return texts
 }
 
 /**
@@ -171,22 +193,31 @@ export async function disposeCodexChild(
 ): Promise<void> {
   wire.close()
 
-  // The side channel captures the outcome the failure facts cite while the
-  // shared stdin-EOF → terminate → tree-join ladder owns the teardown.
-  let outcome: SubprocessOutcome | undefined
-  void child.done.then(
-    (value) => { outcome = value },
-    /* v8 ignore next -- a spawn-level done rejection carries no exit facts. */
-    () => {},
-  )
-  try {
-    await disposeProviderChild(child, { endStdin: true })
-  } catch (error: unknown) {
-    throw new CodexRunFailure({
-      stage: 'teardown',
-      category: 'unknown',
-      outcome,
-    }, thrown(error))
+  if (child.pid > 0) {
+    let outcome: SubprocessOutcome | undefined
+    void child.done.then(
+      (value) => { outcome = value },
+      /* v8 ignore next -- a positive pid excludes spawn-level done rejection. */
+      () => {},
+    )
+    try {
+      child.stdin?.end()
+    } catch {
+      // A concurrently closed stdin does not change tree ownership below.
+    }
+    child.terminate()
+    try {
+      await child.waitForExit()
+    } catch (error: unknown) {
+      throw new CodexRunFailure({
+        stage: 'teardown',
+        category: 'unknown',
+        outcome,
+      }, thrown(error))
+    }
+    await child.done
+  } else {
+    await child.done.catch(() => {})
   }
 }
 

@@ -101,17 +101,16 @@ function validatePwshArgs(args: PwshToolArgs): void {
 
 function pwshDescription(backgroundEnabled: boolean, escalationModes: readonly SandboxMode[]): string {
   const background = backgroundEnabled
-    ? ' Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.'
-    : ' Background execution is not available; long-running commands must finish within the timeout.'
-  const base = 'Execute a PowerShell command and return its stdout/stderr. '
+    ? 'Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.'
+    : 'Background execution is not available; long-running commands must finish within the timeout.'
+  const base = 'Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. '
     + 'Each call runs in a fresh pwsh process: no state (cwd, variables, functions) persists between calls — '
     + 'pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\\...`); read environment '
     + 'variables with `$env:NAME`. Non-zero exits are reported as `[exit code: N]`. '
     + 'Current harness environment facts are exposed through managed `$env:DSH_*` variables; inspect them when needed. '
-    + 'A blocked file operation under a file sandbox is reported as `[sandbox: file access denied under <mode> mode]` — '
-    + 'a policy denial, not a bug in the command; do not retry another way. '
+    + 'Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. '
+    + 'Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. '
     + 'On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. '
-    + 'Long output is truncated to its tail; the full output is saved to a file whose path is reported when available.'
     + background
   if (escalationModes.length === 0) return base
   // The language-mode and named-pipe contracts below are Windows-restricted-token
@@ -121,17 +120,26 @@ function pwshDescription(backgroundEnabled: boolean, escalationModes: readonly S
   // pwsh-sandbox composition must gate both sentences on the platform instead
   // (tracked in the pwsh-tool-and-executor Agent Note).
   return base + ' Under the Windows sandbox, read-only pwsh runs in PowerShell ConstrainedLanguage mode, while '
-    + 'workspace-write stays in FullLanguage unless host policy says otherwise; in read-only, .NET static calls, '
-    + '`Add-Type`, COM objects, and reflection fail with "only core types" errors, while cmdlets and core types work. '
+    + 'workspace-write stays in FullLanguage unless host policy says otherwise. In read-only, prefer cmdlets and core types (`[string]`, `[datetime]`, `[regex]`, `[guid]`); '
+    + '.NET static calls (`[System.IO.*]::`, `[math]::`), `Add-Type`, COM objects, and reflection fail '
+    + 'with "only core types" errors. `-f` formatting, property access, and core cmdlets work. '
     + 'In both confined modes, programs cannot open named pipes, so a command that captures another '
-    + 'program\'s output through piped stdio fails with EPERM — the documented boundary: do not retry the '
-    + 'command another way; escalate the exact command once or restructure it to avoid capturing output. '
-    + 'Attempting a command the sandbox may deny is safe and expected: run it and read the marker. When a command '
-    + 'is denied and a wider mode would let it succeed, retry the exact command once with `sandbox_permissions` '
-    + '(the narrowest wider mode that suffices) plus a one-sentence `justification`; the approval prompt raised '
-    + 'by that retry is how the user consents. Never escalate speculatively: ground the request in a real denial. '
-    + 'If the session states approval prompts are disabled, a denial is final — do not set `sandbox_permissions`. '
-    + 'A rejected escalation is final for that command — stop and explain, never work around it.'
+    + 'program\'s output through piped stdio (Node.js `child_process.spawn`/`exec` with the default '
+    + '`stdio: \'pipe\'`) fails with EPERM, while `stdio: \'inherit\'` and `stdio: \'ignore\'` spawns '
+    + 'work and PowerShell\'s own pipelines are unaffected. That EPERM is the documented boundary: '
+    + 'do not retry the command another way — escalate the exact command once or restructure it to '
+    + 'avoid capturing output. '
+    + 'Attempting a command the sandbox may deny is safe and expected: run it and read the '
+    + 'marker rather than assuming the denial. When a command is denied and a wider mode would let it '
+    + 'succeed, escalate immediately in the same turn — the one sanctioned exception to a denial: retry '
+    + 'the exact same command once with `sandbox_permissions` (the narrowest wider mode that suffices) '
+    + 'plus a one-sentence `justification`. Do not detour through chat to ask permission first — the '
+    + 'approval prompt raised by that retry is how the user consents. If the session states approval '
+    + 'prompts are disabled, there is no exception: a denial is final — do not set `sandbox_permissions`. '
+    + 'Never escalate speculatively: ground the request in a real denial — normally the one this command '
+    + 'just hit; escalating up front is fine only when this session already denied the same access. '
+    + 'A rejected escalation is final for that command — stop and explain, never work around '
+    + 'it — but it does not forbid attempting or escalating other commands later.'
 }
 
 /**

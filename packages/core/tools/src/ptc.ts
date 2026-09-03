@@ -42,10 +42,12 @@ interface RunCodeFlavor {
  */
 const TYPESCRIPT_FLAVOR: RunCodeFlavor = {
   description:
-    'Execute a TypeScript program against the available tools. `code` = the BODY of an async function '
-    + '(erasable syntax; top-level `await`/`return` work); `description` = a short summary. Call tools as '
-    + '`await tools.name(args)` per the system-prompt declarations. Only what you print or return is output. '
-    + 'Image-bearing subtool results attach after the run.',
+    'Execute a TypeScript program against the available tools. Takes two required '
+    + 'arguments: `code`, the BODY of an async function (erasable syntax only; top-level '
+    + '`await` and `return` work), and `description`, a short summary of what the program '
+    + 'does. Call tools as `await tools.name(args)` per the declarations in the system '
+    + 'prompt. Only what you print or return is program output — curate it. Image-bearing '
+    + 'subtool results are attached after the run.',
   codeDescription: 'The program: the body of an async TypeScript function.',
 }
 
@@ -606,9 +608,9 @@ export function createRunCodeTool(registry: ToolRuntime, options: RunCodeBridgeO
       // restricted globals vanish) — the same view the SDK section declared,
       // so a program can bind exactly what its prompt promised; sub-dispatch
       // re-resolves per call through the same view (exec.agent threads down).
-      for (const name of registry.toolNames(exec.agent)) {
-        if (name === RUN_CODE_NAME) continue
-        Object.defineProperty(functions, name, { enumerable: true, value: binding(name) })
+      for (const schema of registry.schemas(exec.agent)) {
+        if (schema.name === RUN_CODE_NAME) continue
+        Object.defineProperty(functions, schema.name, { enumerable: true, value: binding(schema.name) })
       }
 
       try {

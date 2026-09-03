@@ -175,10 +175,11 @@ return { status: 'budget-limited', roundsStarted: args.maxRounds, report: previo
 `
 
 const DESCRIPTION = 'Run a foreground fresh-agent Ralph loop toward one immutable objective. '
-  + 'Use only when the direct human explicitly asks for Ralph or fresh-agent iteration. Each round opens '
-  + 'a new child with no parent conversation or prior child session; the shared workspace is long-term '
-  + 'memory, and only a bounded structured report crosses rounds. Returns when a worker reports completion '
-  + 'or a concrete blocker, or at the round limit. Ordinary long-running same-session work belongs to goal tools.'
+  + 'Use only when the direct human explicitly asks for Ralph or fresh-agent iteration. Each round '
+  + 'opens a new child with no parent conversation or prior child session; the shared workspace is '
+  + 'long-term memory, and only a bounded structured report crosses rounds. The call returns when '
+  + 'a worker reports completion or a concrete blocker, or at the round limit. Ordinary long-running same-session work '
+  + 'belongs to goal tools.'
 
 /** Validate defaults even when a caller invokes apply() without Loader normalization. */
 function resolveConfig(config: Config): ResolvedConfig {

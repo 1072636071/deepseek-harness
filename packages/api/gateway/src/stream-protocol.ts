@@ -283,66 +283,33 @@ export function parseRemoteStreamClientMessage(text: string): RemoteStreamClient
   })
 }
 
-/** Every text-message shape the Host may send. */
-export type RemoteStreamServerWireMessage = RemoteStreamServerMessage | RemoteStreamServerBatch
-
-/**
- * One physical message coalescing several logical frames the Host produced in
- * the same tick. Each member is the JSON text of one logical frame (never a
- * nested batch), so a frame that cannot be serialized is attributable to its
- * own stream and the outer envelope can never fail to encode.
- */
-export interface RemoteStreamServerBatch {
-  readonly type: 'batch'
-  readonly frames: readonly string[]
-}
-
 /**
  * Parse and validate one Host-to-browser text message.
  * @param text - complete WebSocket text message.
- * @returns the validated logical-stream frame or coalesced batch.
- */
-export function parseRemoteStreamServerMessage(text: string): RemoteStreamServerWireMessage {
-  return parseMessage(text, (value) => {
-    if (value.type === 'batch' && exactKeys(value, ['type', 'frames']) && Array.isArray(value.frames)
-      && value.frames.length > 0
-      && value.frames.every(member => typeof member === 'string' && member.length > 0)) {
-      return value as unknown as RemoteStreamServerBatch
-    }
-    return validateServerFrame(value)
-  })
-}
-
-/**
- * Parse and validate one logical stream frame (a batch member, or a bare
- * Host-to-browser message from a Host that does not batch).
- * @param text - JSON text of exactly one logical frame.
  * @returns the validated logical-stream frame.
  */
-export function parseRemoteStreamServerFrame(text: string): RemoteStreamServerMessage {
-  return parseMessage(text, validateServerFrame)
-}
-
-function validateServerFrame(value: Record<string, unknown>): RemoteStreamServerMessage {
-  if (value.type === 'item'
-    && (exactKeys(value, ['type', 'streamId']) || exactKeys(value, ['type', 'streamId', 'value']))
-    && validId(value.streamId)) {
-    return value as unknown as RemoteStreamServerMessage
-  }
-  if (value.type === 'end' && exactKeys(value, ['type', 'streamId']) && validId(value.streamId)) {
-    return value as unknown as RemoteStreamServerMessage
-  }
-  if (value.type === 'error'
-    && exactKeys(value, ['type', 'streamId', 'error'])
-    && validId(value.streamId)
-    && isRecord(value.error)
-    && exactKeys(value.error, ['code', 'message', 'details'])
-    && typeof value.error.code === 'string'
-    && typeof value.error.message === 'string'
-    && isRecord(value.error.details)) {
-    return value as unknown as RemoteStreamServerMessage
-  }
-  throw new Error('api gateway: invalid Remote stream server message')
+export function parseRemoteStreamServerMessage(text: string): RemoteStreamServerMessage {
+  return parseMessage(text, (value) => {
+    if (value.type === 'item'
+      && (exactKeys(value, ['type', 'streamId']) || exactKeys(value, ['type', 'streamId', 'value']))
+      && validId(value.streamId)) {
+      return value as unknown as RemoteStreamServerMessage
+    }
+    if (value.type === 'end' && exactKeys(value, ['type', 'streamId']) && validId(value.streamId)) {
+      return value as unknown as RemoteStreamServerMessage
+    }
+    if (value.type === 'error'
+      && exactKeys(value, ['type', 'streamId', 'error'])
+      && validId(value.streamId)
+      && isRecord(value.error)
+      && exactKeys(value.error, ['code', 'message', 'details'])
+      && typeof value.error.code === 'string'
+      && typeof value.error.message === 'string'
+      && isRecord(value.error.details)) {
+      return value as unknown as RemoteStreamServerMessage
+    }
+    throw new Error('api gateway: invalid Remote stream server message')
+  })
 }
 
 function parseMessage<T>(text: string, validate: (value: Record<string, unknown>) => T): T {

@@ -68,19 +68,19 @@ export function shallowEqual(a: unknown, b: unknown): boolean {
   return shallow(a, b)
 }
 
-/** Run `fn` on the next animation frame (microtask where rAF is absent, e.g. node tests). */
-function nextFrame(fn: () => void): void {
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => { fn() })
-  else queueMicrotask(fn)
-}
-
 /** Batches subscriber notification into one flush per animation frame. */
 function rafBatch(notify: () => void): () => void {
+  // Fall back to microtask batching where rAF is absent (node unit tests);
+  // both preserve the N-changes=1-notification contract within a tick.
+  const schedule: (fn: () => void) => void =
+    typeof requestAnimationFrame === 'function'
+      ? (fn) => { requestAnimationFrame(() => { fn() }) }
+      : (fn) => { queueMicrotask(fn) }
   let scheduled = false
   return () => {
     if (scheduled) return
     scheduled = true
-    nextFrame(() => {
+    schedule(() => {
       scheduled = false
       notify()
     })
@@ -106,7 +106,7 @@ export function createSnapshotStore<T>(
   // the immer middleware without its setState-signature mutator generics).
   const withSelector = subscribeWithSelector(() => init)
   const api: StoreApi<T> = createStore<T>()(withSelector)
-  const cancelPendingWrite = opts?.persist ? attachPersistence(api, opts.persist.name) : undefined
+  if (opts?.persist) attachPersistence(api, opts.persist.name)
 
   let subscribe = (fn: () => void) => api.subscribe(() => {
     notifySubscribers([fn], '[client-store]')
@@ -121,7 +121,7 @@ export function createSnapshotStore<T>(
     }
   }
 
-  const store: SnapshotStore<T> = {
+  return {
     getSnapshot: () => api.getState(),
     subscribe: fn => subscribe(fn),
     update: (mutator) => {
@@ -133,43 +133,6 @@ export function createSnapshotStore<T>(
       api.setState(devFreeze(next), true)
     },
   }
-  if (cancelPendingWrite !== undefined) pendingWriteCancels.set(store, cancelPendingWrite)
-  return store
-}
-
-/**
- * Pending-write cancel hook per persisted store instance. Lives beside
- * {@link defineStore} so `clearPersisted` can drop an already-scheduled frame
- * write — otherwise a buried scope would resurrect its state from storage.
- */
-const pendingWriteCancels = new WeakMap<SnapshotStore<unknown>, () => void>()
-
-/**
- * Pending frame-batched storage writes by persist key. Registration is
- * transient — an entry lives only until its write lands or is dropped — so
- * churning session-scoped stores never accumulates instances here.
- */
-const pendingPersistenceWrites = new Map<string, () => void>()
-
-/** The document object the shared flush listeners are installed on (tests swap the stub). */
-let flushListenersOn: unknown
-
-/**
- * One shared `visibilitychange`/`pagehide` pair for the whole module: reload
- * and tab-hide never paint again, so anything still pending is flushed there.
- * `pagehide` rather than `unload` — unload is unreliable on mobile browsers.
- */
-function ensurePersistenceFlushListeners(): void {
-  if (typeof document === 'undefined') return
-  if (flushListenersOn === document) return
-  flushListenersOn = document
-  const flushAll = (): void => {
-    for (const write of [...pendingPersistenceWrites.values()]) write()
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flushAll()
-  })
-  window.addEventListener('pagehide', flushAll)
 }
 
 /**
@@ -179,23 +142,12 @@ function ensurePersistenceFlushListeners(): void {
  * draft becomes {0:'h',1:'e',...}) — not fixable via merge/deserialize options
  * because the corruption happens before serialization. Storage failures
  * (quota, private mode) only disable persistence, never break the store.
- *
- * Write-back rides the frame channel: a frame's worth of setState calls
- * coalesces into ONE stringify + setItem instead of paying both per update.
- * A hidden tab never paints, so changes there write synchronously; anything
- * still pending at tab-hide or pagehide is flushed by the shared listeners.
- *
- * @returns drop the store's pending write (used by `clearPersisted`, so a
- * buried scope cannot resurrect its state from an already-scheduled frame).
  */
-function attachPersistence<T>(api: StoreApi<T>, name: string): () => void {
+function attachPersistence<T>(api: StoreApi<T>, name: string): void {
   // Non-browser runs (node e2e booting the client tree) have no localStorage:
   // persistence silently disables — same contract as a storage failure, minus
   // the per-store console noise a ReferenceError would produce.
-  if (typeof localStorage === 'undefined') return () => {}
-  // A same-key instance created before an earlier frame's write landed reads
-  // the freshest state: land that pending write first.
-  pendingPersistenceWrites.get(name)?.()
+  if (typeof localStorage === 'undefined') return
   try {
     const raw = localStorage.getItem(name)
     if (raw !== null) {
@@ -204,35 +156,13 @@ function attachPersistence<T>(api: StoreApi<T>, name: string): () => void {
   } catch (error) {
     console.error(`snapshot store '${name}' rehydration failed:`, error)
   }
-  ensurePersistenceFlushListeners()
-  const persist = (): void => {
-    if (pendingPersistenceWrites.get(name) === write) pendingPersistenceWrites.delete(name)
+  api.subscribe((state) => {
     try {
-      localStorage.setItem(name, JSON.stringify(api.getState()))
+      localStorage.setItem(name, JSON.stringify(state))
     } catch (error) {
       console.error(`snapshot store '${name}' persistence failed:`, error)
     }
-  }
-  // A scheduled entry that was dropped (clearPersisted) or superseded must not
-  // resurrect stale state when its already-queued frame fires.
-  const write = (): void => {
-    if (pendingPersistenceWrites.get(name) !== write) return
-    persist()
-  }
-  api.subscribe(() => {
-    // A hidden tab never paints, so rAF would defer writes indefinitely;
-    // write synchronously there — batching exists to stay off the input path.
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-      persist()
-      return
-    }
-    if (pendingPersistenceWrites.has(name)) return
-    pendingPersistenceWrites.set(name, write)
-    nextFrame(write)
   })
-  return () => {
-    if (pendingPersistenceWrites.get(name) === write) pendingPersistenceWrites.delete(name)
-  }
 }
 
 /** Deep-freeze draftable wholesale-set state outside production: set() bypasses immer's freeze. */
@@ -257,9 +187,7 @@ export interface EngineStoreHandle<T, A extends ActionsDecl<T>> extends StoreHan
    *
    * Known boundary: the persist key is the storage identity, so multiple live
    * instances created under the same resolved key share (and cross-pollute)
-   * one localStorage entry — and because write-back is frame-batched, an
-   * instance created within the same frame reads the pre-write value.
-   * Instance uniqueness per key is the caller's
+   * one localStorage entry. Instance uniqueness per key is the caller's
    * responsibility — production is safe because the framework caches one
    * instance per handle x scope key; tests wanting isolation use distinct
    * scope keys or persist-free declarations (multi-create freedom is a
@@ -308,9 +236,6 @@ export function defineStore<T, A extends ActionsDecl<T>>(
         subscribe: fn => store.subscribe(fn),
         store,
         clearPersisted: () => {
-          // Drop any scheduled frame write first: a buried scope must not
-          // resurrect its state from storage on the flush.
-          pendingWriteCancels.get(store)?.()
           if (persistKey === undefined || typeof localStorage === 'undefined') return
           try {
             localStorage.removeItem(persistKey)

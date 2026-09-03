@@ -42,12 +42,15 @@ type UpdateAction = 'edit' | 'pause' | 'resume' | 'complete' | 'blocked'
 const UPDATE_ACTIONS: UpdateAction[] = ['edit', 'pause', 'resume', 'complete', 'blocked']
 
 const CREATE_DESCRIPTION =
-  'Create one persisted same-session goal for the current direct human long-running request. '
-  + 'Infer objective without ask. Not for trivial single-turn work; rejects non-human and subagent authority.'
+  'Create one persisted same-session completion goal when the current direct human request '
+  + 'is a long-running objective that should continue across autonomous goal rounds. You may '
+  + 'infer that intent without requiring the user to say "create a goal". Do not use this for '
+  + 'trivial single-turn work. Execution rejects non-human and subagent authority.'
 
 const GET_DESCRIPTION =
-  'Read current same-session goal: exact id/revision, objective, phase, completed continuation rounds, '
-  + 'round limit, blocker reason if present, and next continuation armed. Call before update_goal.'
+  'Read the current same-session goal, including its exact id/revision, objective, phase, completed '
+  + 'continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. '
+  + 'Call this before updating a goal.'
 
 /** Canonical goal-tool output, matching the existing compact Native JSON. */
 type GoalToolValue =
@@ -229,9 +232,10 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'update_goal',
-    description: 'Update exact current revision. edit/pause/resume require direct top-level human request; '
-      + 'auto continuation allows complete/blocked. blocked rejected before minimum rounds; model judges same '
-      + 'condition persisted, explains in blocked_reason.',
+    description: 'Update the exact current goal revision. edit, pause, and resume require a direct '
+      + 'top-level human request. During an automatic continuation of the current goal, complete '
+      + 'and blocked are also allowed. blocked is rejected before the configured minimum round count; the model remains '
+      + 'responsible for judging that the same condition persisted across those rounds and must explain it in blocked_reason.',
     parameters: {
       goal_id: { type: 'string', required: true, description: 'Exact id returned by get_goal.' },
       revision: { type: 'number', required: true, description: 'Exact positive revision returned by get_goal.' },

@@ -595,8 +595,6 @@ const TOOL_PACKAGES: ToolPackage[] = [
 /** One package's contribution to the catalog: its schemas plus attribution. */
 interface CatalogPackage {
   pkg: string
-  /** The manifest leaf name, so description-length limits keep one key namespace. */
-  dir: string
   sources: Readonly<Record<string, string>>
   requires: string[]
   writes: string[]
@@ -654,83 +652,6 @@ export function assertToolsHarvested(entry: ToolPackage, harvested: number): voi
   )
 }
 
-/** Upper bound in characters for a model-visible description without an override. */
-export const DEFAULT_DESCRIPTION_LIMIT = 200
-
-/**
- * Length ceilings for model-visible descriptions whose irreducible behavior
- * facts do not fit the default bound. Keys are `<manifest dir> <tool name>`
- * so same-named tools across packages stay independent (`bash` exists as
- * both a one-shot and a persistent tool); each entry is the ceiling for that
- * exact schema. A description that outgrows the default must trim to the
- * behavior facts or register a justified ceiling here — the registration
- * keeps the relaxation a visible, reviewed decision instead of silent drift.
- */
-const DESCRIPTION_LENGTH_LIMITS: Readonly<Record<string, number>> = {
-  // One-shot shell family: fresh-process contract, `[sandbox: ...]` denial
-  // markers, exit-code conventions, tail truncation + spill file, managed
-  // `DSH_*` environment hints, background-job protocol; pwsh additionally
-  // carries the Windows force-kill settlement marker.
-  'tool-bash bash': 850,
-  'tool-pwsh pwsh': 1100,
-  // Minimal-preset anchored editor: four subcommand semantics (view/create/
-  // unique literal replace/insert) plus cross-call state persistence.
-  'tool-str-replace-editor str_replace_editor': 350,
-  // Orchestrators whose hook signatures, failure semantics (null vs kill),
-  // authority rules, and scheduling contracts need verbatim wording.
-  'tool-workflow workflow': 2000,
-  'tool-ralph ralph': 500,
-  'tool-subagent subagent': 500,
-  // Route discovery must name the argument combinations the model can pass.
-  'tool-subagent list_subagent_models': 450,
-  'tool-subagent-control interrupt_agent': 400,
-  'tool-subagent-control list_agents': 550,
-  'tool-subagent-control send_message': 300,
-  'tool-subagent-report report': 400,
-  'tool-todo todo_write': 750,
-  'tool-jobs job_output': 250,
-  'schedule schedule_create': 400,
-  'tool-goal update_goal': 250,
-  'plan-mode exit_plan_mode': 300,
-  'tool-agent-team wait_agent': 250,
-  // Discovery and query tools that disclose cap/sampling/spill behavior.
-  'tool-fs-search glob': 400,
-  'tool-fs-search grep': 250,
-  'tools run_code': 400,
-  'tool-terminal terminal_send': 220,
-  'tool-lsp lsp': 250,
-  'tool-fs read_image': 320,
-  // Opt-in dynamic-plugin family: approval/version-pointer guarantees the
-  // model must not guess at.
-  'tool-cordis cordis_define': 650,
-  'tool-cordis cordis_run': 700,
-  'tool-cordis cordis_stop': 350,
-  'tool-cordis cordis_undefine': 420,
-  'tool-cordis cordis_inspect_list': 400,
-  'tool-cordis cordis_inspect_query': 800,
-  'tool-cordis cordis_inspect_self': 500,
-}
-
-/**
- * Assert every harvested description stays within its length budget: the
- * default {@link DEFAULT_DESCRIPTION_LIMIT} or a registered ceiling from
- * {@link DESCRIPTION_LENGTH_LIMITS}. Exported for direct negative tests.
- * @param entry - the manifest entry whose package owns these schemas.
- * @param schemas - the harvested model-visible schemas of that entry.
- * @throws naming each offending tool when a description exceeds its budget.
- */
-export function assertDescriptionLength(entry: Pick<ToolPackage, 'pkg' | 'dir'>, schemas: readonly ToolSchema[]): void {
-  const limitFor = (schema: ToolSchema): number =>
-    DESCRIPTION_LENGTH_LIMITS[`${entry.dir} ${schema.name}`] ?? DEFAULT_DESCRIPTION_LIMIT
-  const offenders = schemas.filter(schema => schema.description.length > limitFor(schema))
-  if (offenders.length === 0) return
-  throw new Error(
-    `gen-tool-catalog: ${entry.pkg} description(s) over their character budget: `
-    + offenders.map(schema => `${schema.name} ${schema.description.length}>${limitFor(schema)}`).join(', ')
-    + '. Trim the prose to the behavior facts, or register a justified ceiling in DESCRIPTION_LENGTH_LIMITS.',
-  )
-}
-
 /**
  * Boot each tool package on a fresh Context and harvest its model-facing
  * schemas. A fresh Context per package keeps attribution clean (each entry's
@@ -752,10 +673,8 @@ export async function collectToolCatalog(packages: ToolPackage[] = TOOL_PACKAGES
       await entry.mount(ctx)
       const schemas = ctx.tools.schemas(entry.scope?.(ctx)).sort((a, b) => a.name.localeCompare(b.name))
       assertToolsHarvested(entry, schemas.length)
-      assertDescriptionLength(entry, schemas)
       catalog.push({
         pkg: entry.pkg,
-        dir: entry.dir,
         sources: Object.fromEntries(schemas.map(schema => [
           schema.name,
           toolSource(entry, schema.name),

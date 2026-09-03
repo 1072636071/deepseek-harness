@@ -593,16 +593,10 @@ describe('sandbox escalation through ctx.approval', () => {
     const schema = ctx.tools.schemas().find(item => item.name === 'pwsh')!
     const properties = schema.parameters.properties as Record<string, { enum?: string[] }>
     expect(properties['sandbox_permissions']?.enum).toEqual(['workspace-write', 'danger-full-access'])
-    expect(schema.description).toContain('`[exit code: N]`')
-    expect(schema.description).toContain('[sandbox: file access denied under <mode> mode]')
-    expect(schema.description).toContain('`sandbox_permissions`')
-    expect(schema.description).toContain('`justification`')
-    expect(schema.description).toContain('wider mode would let it succeed')
-    expect(schema.description).toContain('job_output')
     expect(schema.description).toContain('approval prompt')
     expect(schema.description).toContain('ConstrainedLanguage')
     expect(schema.description).toContain('workspace-write stays in FullLanguage')
-    expect(schema.description).toContain('named pipes')
+    expect(schema.description).toContain('In both confined modes, programs cannot open named pipes')
     expect(schema.description).toContain('fails with EPERM')
 
     for (const args of [

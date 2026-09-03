@@ -162,44 +162,6 @@ describe('Remote stream mux server carrier lifecycle', () => {
     await once(client, 'close')
   })
 
-  it('coalesces frames produced in the same tick into one physical message', async () => {
-    let release!: () => void
-    const released = new Promise<void>((resolve) => { release = resolve })
-    let opened = 0
-    const entry = await startMux(async () => delayedItem(released, () => { opened += 1 }))
-    const client = await connect(entry.url)
-    const messages: unknown[] = []
-    client.on('message', (data) => {
-      if (!Buffer.isBuffer(data)) throw new TypeError('fixture expected a Buffer frame')
-      messages.push(JSON.parse(data.toString('utf8')) as unknown)
-    })
-    client.send(openFrame('tick-a'))
-    client.send(openFrame('tick-b'))
-    await vi.waitFor(() => { expect(opened).toBe(2) })
-    // Both sources resume from the same release in one microtask drain, so
-    // their item frames share the connection's next physical message.
-    release()
-    const logicalFrames = (): { type: string; streamId: string }[] => messages.flatMap((message) => {
-      const wire = message as { type: string; frames?: string[] }
-      if (wire.type !== 'batch') return [message as { type: string; streamId: string }]
-      return (wire.frames as string[]).map(text => JSON.parse(text) as { type: string; streamId: string })
-    })
-    await vi.waitFor(() => {
-      expect(logicalFrames().filter(frame => frame.type === 'end').length).toBe(2)
-    })
-    const batch = messages.find(message => (message as { type?: string }).type === 'batch') as
-      | { type: 'batch'; frames: string[] }
-      | undefined
-    expect(batch).toBeDefined()
-    if (batch === undefined) throw new Error('fixture expected a coalesced batch message')
-    const items = batch.frames
-      .map(text => JSON.parse(text) as { type: string; streamId: string })
-    expect(items.map(frame => frame.type)).toEqual(['item', 'item'])
-    expect([...items.map(frame => frame.streamId)].sort()).toEqual(['tick-a', 'tick-b'])
-    client.close()
-    await once(client, 'close')
-  })
-
   it('closes the carrier when ws reports an item write failure', async () => {
     let release!: () => void
     const released = new Promise<void>((resolve) => { release = resolve })

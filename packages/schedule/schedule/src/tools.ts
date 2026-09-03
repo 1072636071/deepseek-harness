@@ -145,19 +145,21 @@ const DELETE_OUTPUT_SCHEMA = {
 } as const
 
 const CREATE_DESCRIPTION =
-  'Create one current-session reminder; prompt non-empty; exactly one selector: '
-  + 'after_seconds positive safe-int delay, at strict offset date-time or local date/time object, '
-  + `every_seconds positive safe-int >=${MIN_EVERY_INTERVAL_SECONDS}. `
-  + 'Fixed-rate: creation-aligned, skip missed, merge one latest per overdue rule. '
-  + 'Session-local delivery: runs only while session live, else overdue until resumed.'
+  'Create one reminder in the current session. Supply a non-empty prompt and exactly one selector: '
+  + 'a positive safe-integer after_seconds delay, at as a strict offset date-time or local '
+  + `date/time object, or safe-integer every_seconds of at least ${MIN_EVERY_INTERVAL_SECONDS}. `
+  + 'Fixed-rate reminders stay creation-aligned, skip missed occurrences, and batch one latest '
+  + 'occurrence per overdue rule. '
+  + 'Delivery is session-local: the reminder runs on time only while this session '
+  + 'is live and otherwise becomes overdue until the session is resumed.'
 
 const LIST_DESCRIPTION =
-  'List active reminders in current session in creation order: exact id, UTC target, '
-  + 'scheduled/overdue state, session-local delivery mode.'
+  'List every active reminder in the current session in creation order, including its exact id, '
+  + 'UTC target, scheduled or overdue state, and session-local delivery mode.'
 
 const DELETE_DESCRIPTION =
-  'Delete one active reminder in current session by exact id from schedule_create/schedule_list. '
-  + 'Unknown or already-finished ids return deleted false.'
+  'Delete one active reminder in the current session by the exact id returned by schedule_create '
+  + 'or schedule_list. Unknown or already-finished ids return deleted false.'
 
 /** Deterministic model content for every canonical Schedule value. */
 function renderValue(_args: unknown, value: unknown): ContentBlock[] {

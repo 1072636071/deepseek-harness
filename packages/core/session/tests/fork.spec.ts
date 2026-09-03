@@ -315,27 +315,4 @@ describe('SessionStore.fork', () => {
     expect(() => sessions.fork(source, undefined, SessionId('child')))
       .toThrow(new SessionForkError('session "child" already exists', 'SESSION_ALREADY_EXISTS'))
   })
-
-  it('locates the turn delimiter behind a long between-turn tail', async () => {
-    // The delimiter search walks backwards from the boundary; these cases pin
-    // the same outcome the historical whole-prefix findLast produced when the
-    // turn delimiter sits far above the fork point.
-    const { ctx, sessions } = await setup()
-
-    // Closed turn followed by a long between-turn run: fork succeeds and the
-    // seed is the full prefix.
-    const closed = ctx.sessions.create(SessionId('tail-closed'))
-    appendClosedTurn(closed, 1)
-    for (let index = 0; index < 200; index += 1) closed.append('test/log-only', { value: String(index) })
-    const closedChild = sessions.fork(closed, lastSeq(closed), SessionId('tail-closed-child'))
-    expect(inherited(closedChild)).toEqual(closed.events)
-
-    // Open turn followed by the same tail: the delimiter is still found and
-    // the fork is rejected.
-    const open = ctx.sessions.create(SessionId('tail-open'))
-    appendOpenTurn(open, 1)
-    for (let index = 0; index < 200; index += 1) open.append('test/log-only', { value: String(index) })
-    expect(() => sessions.fork(open, lastSeq(open)))
-      .toThrow(new SessionForkError(`fork boundary ${lastSeq(open)} in session "tail-open" ends inside open turn 1`, 'OPEN_TURN'))
-  })
 })

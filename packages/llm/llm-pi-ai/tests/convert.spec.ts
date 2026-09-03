@@ -849,24 +849,9 @@ describe('mapStopReason / mapUsage', () => {
     'OpenAI Responses stream ended before a terminal response event',
     'openrouter stream ended without a terminal event',
     'Stream ended without finish_reason',
-    // pi-ai's OpenAI-completions rendering of a non-standard gateway terminal
-    // finish_reason:"network_error"; the embedded underscore defeats \b keyword
-    // matching, so it needs its own rule.
-    'Provider finish_reason: network_error',
   ])('maps pi-ai transport wording %j', (errorMessage) => {
     expect(mapStopReason(assistant({ stopReason: 'error', errorMessage })))
       .toMatchObject({ kind: 'error', failure: { code: 'TRANSPORT' } })
-  })
-
-  it('keeps the other provider finish_reason values on the PI_AI_ERROR catch-all', () => {
-    expect(mapStopReason(assistant({
-      stopReason: 'error',
-      errorMessage: 'Provider finish_reason: content_filter',
-    }))).toMatchObject({ kind: 'error', failure: { code: 'PI_AI_ERROR' } })
-    expect(mapStopReason(assistant({
-      stopReason: 'error',
-      errorMessage: 'Provider finish_reason: some_new_reason',
-    }))).toMatchObject({ kind: 'error', failure: { code: 'PI_AI_ERROR' } })
   })
 
   it('uses pi-ai provider-specific overflow classification without losing rate-limit exclusions', () => {

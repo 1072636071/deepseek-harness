@@ -192,10 +192,7 @@ export function apply(ctx: Context, config: Config): void {
     if (!exec.agent) return undefined
     if (!tracked(exec.name)) return undefined
     const canonical = canonicalize(exec.arguments)
-    // JSON.stringify output never contains a raw NUL (control characters are
-    // escaped), so name + NUL + canonical is an injective pair encoding — no
-    // second stringify pass to wrap the pair in a JSON array.
-    const key = `${exec.name}\u0000${canonical}`
+    const key = JSON.stringify([exec.name, canonical])
     const chain = chains.get(exec.agent)
     const count = chain !== undefined && chain.key === key ? chain.count + 1 : 1
     chains.set(exec.agent, { key, count })

@@ -39,23 +39,6 @@ export function ToolCallId(id: string): ToolCallId {
   return brandString<ToolCallId>(id)
 }
 
-/**
- * Compatibility alias for the pre-0.1.2 {@link ToolCallId} brand.
- * Some published profile plugins (for example, dsh-archived-chats) still import
- * the old name from @deepseek-ai/dsh-llm. Remove this alias once no supported
- * plugin release relies on it.
- * @deprecated Use {@link ToolCallId} instead.
- */
-export type CallId = ToolCallId
-
-/**
- * Compatibility value alias for the pre-0.1.2 {@link ToolCallId} brander.
- * @deprecated Use {@link ToolCallId} instead.
- */
-export function CallId(id: string): ToolCallId {
-  return ToolCallId(id)
-}
-
 /** Provider-issued request identifier retained for diagnostics across package boundaries. */
 export type ProviderRequestId = Branded<'ProviderRequestId'>
 

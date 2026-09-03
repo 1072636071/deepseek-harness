@@ -279,16 +279,6 @@ describe('mapFinishReason', () => {
       })
     },
   )
-
-  it('classifies a gateway network_error finish_reason as a transport failure', () => {
-    // Non-standard terminal reason some OpenAI-compatible gateways emit when
-    // their own upstream connection failed; TRANSPORT keeps it retryable under
-    // the default provider retry policy.
-    expect(mapFinishReason('network_error')).toEqual({
-      kind: 'error',
-      failure: { message: 'model stopped: network_error', code: 'TRANSPORT' },
-    })
-  })
 })
 
 describe('mapUsage', () => {

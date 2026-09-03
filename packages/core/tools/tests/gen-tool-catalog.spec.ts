@@ -4,11 +4,9 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  assertDescriptionLength,
   assertManifestComplete,
   assertToolsHarvested,
   collectToolCatalog,
-  DEFAULT_DESCRIPTION_LIMIT,
   render,
   type ToolCatalog,
   type ToolPackage,
@@ -135,7 +133,6 @@ describe('gen-tool-catalog render', () => {
   it('emits a package heading, a tool heading, and a json schema fence', () => {
     const catalog: ToolCatalog = [
       {
-        dir: 'tool-demo',
         pkg: '@deepseek-ai/dsh-tool-demo',
         sources: { demo: 'packages/demo/tool-demo/src/index.ts' },
         requires: ['ctx.tools'],
@@ -150,50 +147,5 @@ describe('gen-tool-catalog render', () => {
     expect(md).toContain('A demo tool.')
     expect(md).toContain('```json')
     expect(md).toContain('Source: [`packages/demo/tool-demo/src/index.ts`]')
-  })
-})
-
-describe('gen-tool-catalog assertDescriptionLength', () => {
-  const makeEntry = (dir: string): ToolPackage => ({
-    pkg: `@deepseek-ai/dsh-${dir}`,
-    dir,
-    source: `packages/demo/${dir}/src/index.ts`,
-    requires: ['ctx.tools'],
-    writes: ['tool/result'],
-    mount: () => Promise.resolve(),
-  })
-  const makeSchema = (name: string, description: string) => ({
-    name,
-    description,
-    parameters: { type: 'object', properties: {} },
-  })
-
-  it('accepts a description exactly at the default budget', () => {
-    expect(() => {
-      assertDescriptionLength(makeEntry('tool-demo'), [makeSchema('demo', 'a'.repeat(DEFAULT_DESCRIPTION_LIMIT))])
-    }).not.toThrow()
-  })
-
-  it('throws, naming the tool with both lengths, past the default budget', () => {
-    const attempt = (): void => {
-      assertDescriptionLength(makeEntry('tool-demo'), [makeSchema('demo', 'x'.repeat(DEFAULT_DESCRIPTION_LIMIT + 1))])
-    }
-    expect(attempt).toThrow(/over their character budget/)
-    expect(attempt).toThrow(/demo 201>200/)
-  })
-
-  it('honors a registered dir-keyed ceiling before the default', () => {
-    const entry = makeEntry('tool-lsp')
-    expect(() => {
-      assertDescriptionLength(entry, [makeSchema('lsp', 'd'.repeat(251))])
-    }).toThrow(/lsp 251>250/)
-    expect(() => {
-      assertDescriptionLength(entry, [makeSchema('lsp', 'd'.repeat(250))])
-    }).not.toThrow()
-  })
-
-  it('keeps every shipped description within its registered budget', async () => {
-    const catalog = await collectToolCatalog()
-    for (const entry of catalog) { expect(() => { assertDescriptionLength(entry, entry.schemas) }).not.toThrow() }
   })
 })

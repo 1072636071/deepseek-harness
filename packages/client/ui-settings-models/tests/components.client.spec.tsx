@@ -926,22 +926,6 @@ describe('ModelsSection', () => {
       .toBe(en.maxTokensPlaceholder)
   })
 
-  it('disables the model visibility checkbox alongside the row inputs when the editor is read-only', () => {
-    render(<DeepSeekModelsEditor
-      models={[{ id: 'flash', visible: false }]}
-      overridden={true}
-      defaultContextWindow={undefined}
-      defaultMaxTokens={undefined}
-      t={t}
-      disabled={true}
-      onChange={vi.fn()}
-      onReset={vi.fn()}
-    />)
-    const toggle = screen.getByLabelText<HTMLInputElement>(`${en.modelVisible} 1`)
-    expect(toggle.checked).toBe(false)
-    expect(toggle.disabled).toBe(true)
-  })
-
   it('can empty and reset the model override, then clear optional fields without dropping hidden data', async () => {
     const { mutate } = await mountDeepSeekCard({
       mutate: vi.fn(() => Promise.resolve(remoteOk(wireNamespaces()[0]))),
@@ -973,22 +957,6 @@ describe('ModelsSection', () => {
       }],
       0,
     ])
-  })
-
-  it('hides a model by unchecking its visibility, reverting to presence when checked', async () => {
-    const { mutate } = await mountDeepSeekCard({
-      mutate: vi.fn(() => Promise.resolve(remoteOk(wireNamespaces()[0]))),
-    })
-    fireEvent.click(screen.getByText(en.customized))
-
-    const toggles = screen.getAllByLabelText(new RegExp(`${en.modelVisible} `))
-    expect(toggles.length).toBe(DEFAULT_DEEPSEEK_MODELS.length)
-    // Unchecking the first model persists `visible: false` beside its id.
-    fireEvent.click(toggles[0] as HTMLInputElement)
-    fireEvent.click(screen.getByText(en.apply))
-    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
-    const value = mutate.mock.calls[0]![1]![0]!.value as Record<string, unknown>[]
-    expect(value[0]).toEqual({ ...DEFAULT_DEEPSEEK_MODELS[0], visible: false })
   })
 
   it('clears an inherited override with an unset op, never a whole-section replace', async () => {

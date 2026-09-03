@@ -86,7 +86,6 @@ export type {
 } from './config.ts'
 export { recordKeyFor } from './auth.ts'
 export { supportedProtocols } from './provider.ts'
-export { classifyPiAiError } from './stream.ts'
 
 export const name = 'llm-pi-ai'
 export const inject = ['llm']

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-client-ui-settings` is the base every preference surface in the dsh web client builds on: a feature plugin binds a namespace and stores or edits its preference rows in the Host settings document without re-implementing transport or schema handling. `ctx.settingsScope` derives a per-namespace scope from the shared document mirror with revision fencing, so a concurrent write from another surface is refused instead of silently overwritten; `ctx.settingsSchema` rehydrates and validates schemas and edits immutable paths synchronously. It declares the slot types settings surfaces fill — `settings.trigger`/`settings.header`/`settings.close` (chrome), `settings.action` (ordered header actions), `settings.section` (one page per feature), `settings.plugins.tab`, and `settings.onboarding` — and renders nothing itself. `ctx.uiSettingsNav` is the cross-plugin capability that publishes an open request the shell reads to land the panel on one section, so an entry outside settings (the composer's model seat) can navigate there without a shell dependency. Because it depends on no `ui-*` presentation package, any feature that owns a preference can reach it; the settings shell itself lives in ui-settings-general.
+`dsh-client-ui-settings` is the base every preference surface in the dsh web client builds on: a feature plugin binds a namespace and stores or edits its preference rows in the Host settings document without re-implementing transport or schema handling. `ctx.settingsScope` derives a per-namespace scope from the shared document mirror with revision fencing, so a concurrent write from another surface is refused instead of silently overwritten; `ctx.settingsSchema` rehydrates and validates schemas and edits immutable paths synchronously. It declares the slot types settings surfaces fill — `settings.trigger`/`settings.header`/`settings.close` (chrome), `settings.action` (ordered header actions), `settings.section` (one page per feature), `settings.plugins.tab`, and `settings.onboarding` — and renders nothing itself. Because it depends on no `ui-*` presentation package, any feature that owns a preference can reach it; the settings shell itself lives in ui-settings-general.
 
 ## Table of Contents
 
@@ -34,10 +34,6 @@ A feature calls `ctx.settingsScope.bind(spec)` with a per-namespace spec and get
 ### Filling the settings slots
 
 A settings surface registers into the slot types this package declares. The shell (`sidebar.settings` occupant, navigation, chrome) lives in ui-settings-general; feature pages register `settings.section` contributions; the Plugins section hosts `settings.plugins.tab` pages; onboarding steps register `settings.onboarding`. Cross-namespace surfaces (schema introspection, the served-namespace directory, `hasDocument`) read the same mirror through `ctx.settingsScope.describe()`.
-
-### Opening a section from elsewhere
-
-An entry outside the settings surface calls `ctx.uiSettingsNav.openSection(id)` with a `settings.section` key (for example the Models page's `'models'`). It publishes a monotonic open request on the service's store; the shell, which reads that store through its inject face, opens the panel and lands on the named section, falling back to the first row when the section is gone. The base holds only the generic request — it names no feature section — and the shell consumes it, so neither gains a dependency on the other's feature.
 
 ### Observable success and failures
 
@@ -64,10 +60,6 @@ The plugin injects `remote` with its `settings` namespace, resolves Host persist
 ### Schema service
 
 `ctx.settingsSchema` performs synchronous schema rehydration, validation, and immutable path editing for settings plugins. Without a `decode` in the spec, a section that is not a plain object, fails its rehydrated schema, or carries a schema envelope this client cannot rehydrate publishes no value at all.
-
-### Navigation request
-
-`ctx.uiSettingsNav` is a thin observable over one `SettingsNavRequest` (`{ seq, sectionId }`). `openSection` bumps a private counter and publishes a new request; the store keeps the last request readable so a shell that mounts after the click still lands on it. The service owns no wire read and no section knowledge beyond the id string it forwards — the shell decides the fallback and the composer decides which id to name.
 
 </details>
 

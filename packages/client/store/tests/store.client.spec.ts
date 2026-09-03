@@ -123,7 +123,7 @@ describe('createSnapshotStore', () => {
     expect(store.getSnapshot().a.n).toBe(9)
   })
 
-  it('rehydrates primitive state whole, not spread into index keys', async () => {
+  it('rehydrates primitive state whole, not spread into index keys', () => {
     const backing = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (k: string) => backing.get(k) ?? null,
@@ -132,12 +132,11 @@ describe('createSnapshotStore', () => {
     })
     const store = createSnapshotStore<string>('', { persist: { name: 'spec-draft' } })
     store.set('hello')
-    await vi.waitFor(() => { expect(backing.has('spec-draft')).toBe(true) })
     const revived = createSnapshotStore<string>('', { persist: { name: 'spec-draft' } })
     expect(revived.getSnapshot()).toBe('hello')
   })
 
-  it('persists to localStorage under the given name and rehydrates', async () => {
+  it('persists to localStorage under the given name and rehydrates', () => {
     const backing = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (k: string) => backing.get(k) ?? null,
@@ -146,75 +145,9 @@ describe('createSnapshotStore', () => {
     })
     const store = createSnapshotStore(init(), { persist: { name: 'spec-store' } })
     store.update((d) => { d.a.n = 42 })
-    await vi.waitFor(() => { expect(backing.has('spec-store')).toBe(true) })
+    expect(backing.has('spec-store')).toBe(true)
     const revived = createSnapshotStore(init(), { persist: { name: 'spec-store' } })
     expect(revived.getSnapshot().a.n).toBe(42)
-  })
-
-  it('coalesces a frame of updates into one localStorage write', () => {
-    const frame: FrameRequestCallback[] = []
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      frame.push(cb)
-      return frame.length
-    })
-    const backing = new Map<string, string>()
-    const writes = vi.fn((_k: string, v: string) => { backing.set('spec-batched', v) })
-    vi.stubGlobal('localStorage', {
-      getItem: () => null,
-      setItem: writes,
-      removeItem: () => {},
-    })
-    const store = createSnapshotStore(init(), { persist: { name: 'spec-batched' } })
-    for (let n = 2; n <= 10; n += 1) store.update((d) => { d.a.n = n })
-    expect(writes).not.toHaveBeenCalled()
-    frame.shift()!(0)
-    expect(writes).toHaveBeenCalledTimes(1)
-    expect(JSON.parse(backing.get('spec-batched')!)).toEqual({ a: { n: 10 }, b: { list: ['x'] } })
-  })
-
-  it('writes synchronously while the page is hidden and flushes a pending write on hide/pagehide', () => {
-    const frame: FrameRequestCallback[] = []
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      frame.push(cb)
-      return frame.length
-    })
-    const listeners: Record<string, () => void> = {}
-    let visibility: 'visible' | 'hidden' = 'visible'
-    vi.stubGlobal('document', {
-      get visibilityState() { return visibility },
-      addEventListener: (type: string, fn: () => void) => { listeners[type] = fn },
-    })
-    vi.stubGlobal('window', {
-      addEventListener: (type: string, fn: () => void) => { listeners[type] = fn },
-    })
-    const backing = new Map<string, string>()
-    const writes = vi.fn((_k: string, v: string) => { backing.set('spec-hidden', v) })
-    vi.stubGlobal('localStorage', {
-      getItem: () => null,
-      setItem: writes,
-      removeItem: () => {},
-    })
-
-    // A pending frame write is flushed when the page hides (rAF never fires
-    // there), and further changes while hidden write immediately.
-    const store = createSnapshotStore(init(), { persist: { name: 'spec-hidden' } })
-    store.update((d) => { d.a.n = 2 })
-    expect(frame).toHaveLength(1)
-    visibility = 'hidden'
-    listeners['visibilitychange']!()
-    expect(writes).toHaveBeenCalledTimes(1)
-    frame.length = 0
-    store.update((d) => { d.a.n = 3 })
-    expect(writes).toHaveBeenCalledTimes(2)
-    expect(JSON.parse(backing.get('spec-hidden')!)).toEqual({ a: { n: 3 }, b: { list: ['x'] } })
-
-    // A pending frame write is flushed on pagehide too (reload/close path).
-    visibility = 'visible'
-    store.update((d) => { d.a.n = 4 })
-    expect(frame).toHaveLength(1)
-    listeners['pagehide']!()
-    expect(writes).toHaveBeenCalledTimes(3)
-    frame.length = 0
   })
 
   it('reports rehydration failures without preventing store creation', () => {
@@ -235,7 +168,7 @@ describe('createSnapshotStore', () => {
     )
   })
 
-  it('reports persistence failures without rejecting the write', async () => {
+  it('reports persistence failures without rejecting the write', () => {
     const failure = new Error('storage write failed')
     vi.stubGlobal('localStorage', {
       getItem: () => null,
@@ -247,12 +180,10 @@ describe('createSnapshotStore', () => {
 
     expect(() => { store.update((draft) => { draft.a.n = 7 }) }).not.toThrow()
     expect(store.getSnapshot().a.n).toBe(7)
-    await vi.waitFor(() => {
-      expect(report).toHaveBeenCalledWith(
-        "snapshot store 'spec-broken-write' persistence failed:",
-        failure,
-      )
-    })
+    expect(report).toHaveBeenCalledWith(
+      "snapshot store 'spec-broken-write' persistence failed:",
+      failure,
+    )
   })
 })
 
@@ -298,7 +229,7 @@ describe('defineStore', () => {
     expect(b.store.getSnapshot().draft).toBe('')
   })
 
-  it('suffixes the persist key with the scope key: per-session persistence plus clearPersisted cleanup', async () => {
+  it('suffixes the persist key with the scope key: per-session persistence plus clearPersisted cleanup', () => {
     const backing = new Map<string, string>()
     vi.stubGlobal('localStorage', {
       getItem: (k: string) => backing.get(k) ?? null,
@@ -313,8 +244,6 @@ describe('defineStore', () => {
     handle.create('s1').actions.setDraft('one')
     handle.create('s2').actions.setDraft('two')
     handle.create().actions.setDraft('root')
-    // Write-back is frame-batched: settle before reading the storage side.
-    await vi.waitFor(() => { expect(backing.has('spec.chat.s1')).toBe(true) })
     expect(JSON.parse(backing.get('spec.chat.s1')!)).toEqual({ draft: 'one' })
     expect(JSON.parse(backing.get('spec.chat.s2')!)).toEqual({ draft: 'two' })
     expect(JSON.parse(backing.get('spec.chat')!)).toEqual({ draft: 'root' })
@@ -352,31 +281,6 @@ describe('defineStore', () => {
       actions: { inc: (d) => { d.n += 1 } },
     }).create()
     expect(() => { inst.clearPersisted() }).not.toThrow()
-  })
-
-  it('drops a pending frame write on clearPersisted (a buried scope cannot resurrect its state)', () => {
-    const frame: FrameRequestCallback[] = []
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      frame.push(cb)
-      return frame.length
-    })
-    const backing = new Map<string, string>()
-    vi.stubGlobal('localStorage', {
-      getItem: () => null,
-      setItem: (k: string, v: string) => { backing.set(k, v) },
-      removeItem: (k: string) => { backing.delete(k) },
-    })
-    const inst = defineStore({
-      init: () => ({ n: 0 }),
-      persist: 'spec.buried',
-      actions: { inc: (d) => { d.n += 1 } },
-    }).create()
-    inst.actions.inc()
-    inst.clearPersisted()
-    // The scheduled frame write lands AFTER the scope was buried: it must be
-    // dropped, not resurrect the dead instance's state.
-    for (const cb of frame.splice(0)) cb(0)
-    expect(backing.has('spec.buried')).toBe(false)
   })
 })
 

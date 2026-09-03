@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   parseRemoteStreamClientMessage,
-  parseRemoteStreamServerFrame,
   parseRemoteStreamServerMessage,
 } from '../src/stream-protocol.ts'
 
@@ -65,30 +64,5 @@ describe('Remote stream wire protocol', () => {
 
   it.each(['not json', 'null', '[]', '1'])('rejects a non-message payload: %s', (text) => {
     expect(() => parseRemoteStreamServerMessage(text)).toThrow('api gateway: Remote stream message')
-  })
-
-  it('accepts a coalesced batch of logical frames and rejects a malformed member', () => {
-    const members = [
-      JSON.stringify({ type: 'item', streamId: 'stream-1', value: 1 }),
-      JSON.stringify({ type: 'end', streamId: 'stream-2' }),
-    ]
-    expect(parseRemoteStreamServerMessage(JSON.stringify({ type: 'batch', frames: members })))
-      .toEqual({ type: 'batch', frames: members })
-    expect(parseRemoteStreamServerFrame(members[0] as string))
-      .toEqual({ type: 'item', streamId: 'stream-1', value: 1 })
-
-    // Outer batch validation checks only member fields (non-empty strings);
-    // member content is enforced when each frame is parsed.
-    expect(parseRemoteStreamServerMessage(JSON.stringify({
-      type: 'batch', frames: [JSON.stringify({ type: 'batch', frames: [] })],
-    }))).toEqual({ type: 'batch', frames: [JSON.stringify({ type: 'batch', frames: [] })] })
-    expect(() => parseRemoteStreamServerFrame(JSON.stringify({ type: 'batch', frames: [] })))
-      .toThrow('api gateway: invalid Remote stream server message')
-    expect(() => parseRemoteStreamServerFrame('not json'))
-      .toThrow('api gateway: Remote stream message')
-    expect(() => parseRemoteStreamServerMessage(JSON.stringify({ type: 'batch', frames: [] })))
-      .toThrow('api gateway: invalid Remote stream server message')
-    expect(() => parseRemoteStreamServerMessage(JSON.stringify({ type: 'batch', frames: 'nope' })))
-      .toThrow('api gateway: invalid Remote stream server message')
   })
 })

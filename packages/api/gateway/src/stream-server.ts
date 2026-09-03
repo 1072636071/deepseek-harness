@@ -102,10 +102,6 @@ interface ActiveStream {
 class RemoteStreamMuxConnection {
   private readonly streams = new Map<string, ActiveStream>()
   private writes = Promise.resolve()
-  /** JSON texts of logical frames coalesced into the next physical message. */
-  private queued: string[] = []
-  /** Set while a flush is scheduled; resolves when that batch has been written. */
-  private queuedDelivery: PromiseWithResolvers<void> | undefined
 
   constructor(
     private readonly socket: WebSocket,
@@ -165,13 +161,13 @@ class RemoteStreamMuxConnection {
     try {
       const source = await this.open(endpoint, payload, active.abort.signal)
       for await (const value of source) {
-        await this.queue({ type: 'item', streamId, value })
+        await this.send({ type: 'item', streamId, value })
       }
-      if (!active.abort.signal.aborted) await this.queue({ type: 'end', streamId })
+      if (!active.abort.signal.aborted) await this.send({ type: 'end', streamId })
     } catch (error) {
       if (!active.abort.signal.aborted && this.socket.readyState === WebSocket.OPEN) {
         try {
-          await this.queue({ type: 'error', streamId, error: this.failure(error) })
+          await this.send({ type: 'error', streamId, error: this.failure(error) })
         } catch {
           // A terminal frame that cannot be encoded or written leaves the
           // logical stream ambiguous, so fail the physical generation.
@@ -181,48 +177,25 @@ class RemoteStreamMuxConnection {
     }
   }
 
-  /**
-   * Queue one logical frame and resolve when its physical message is written.
-   * Frames queued before the flush microtask runs share one physical message
-   * (a lone frame goes bare, matching the historical wire shape); a pump still
-   * awaits this per frame, so the socket write keeps pacing every source.
-   * Serialization happens per frame here, so an unserializable frame rejects
-   * only the pump that produced it — never its batch mates.
-   */
-  private queue(message: RemoteStreamServerMessage): Promise<void> {
+  private send(message: RemoteStreamServerMessage): Promise<void> {
     let text: string
     try {
       text = JSON.stringify(message)
     } catch (cause) {
       return Promise.reject(new Error('api gateway: Remote stream item is not JSON serializable', { cause }))
     }
-    this.queued.push(text)
-    if (this.queuedDelivery === undefined) {
-      this.queuedDelivery = Promise.withResolvers<void>()
-      queueMicrotask(() => { this.flushQueued() })
-    }
-    return this.queuedDelivery.promise
-  }
-
-  private flushQueued(): void {
-    const delivery = this.queuedDelivery
-    const texts = this.queued
-    this.queuedDelivery = undefined
-    this.queued = []
-    if (delivery === undefined || texts.length === 0) return
-    const write = this.writes.then(() => new Promise<void>((resolve, reject) => {
+    const delivery = this.writes.then(() => new Promise<void>((resolve, reject) => {
       if (this.socket.readyState !== WebSocket.OPEN) {
         reject(new Error('api gateway: Remote stream socket is closed'))
         return
       }
-      const message = texts.length === 1 ? texts[0] as string : JSON.stringify({ type: 'batch', frames: texts })
-      this.socket.send(message, (error) => {
+      this.socket.send(text, (error) => {
         if (error) reject(error)
         else resolve()
       })
     }))
-    this.writes = write.catch(() => undefined)
-    write.then(() => { delivery.resolve() }, (error: unknown) => { delivery.reject(error) })
+    this.writes = delivery.catch(() => undefined)
+    return delivery
   }
 }
 

@@ -227,7 +227,7 @@ function install(agent: Agent, ctx: Context, config: Required<Config>): () => vo
 
     register(scoped.tools.register(defineTool({
       name: 'wait_agent',
-      description: 'Wait for the next teammate status, mailbox, or shared-task change after this call starts. Never wakes inactive members; returns noProgress immediately when none is running or provisioning. Re-list after wakeup or timeout instead of polling.',
+      description: 'Wait for the next teammate status, mailbox, or shared-task change after this call starts. This never wakes inactive members and returns noProgress immediately when no other member is running or provisioning. Re-list after wakeup or timeout instead of polling.',
       parameters: {
         timeout_ms: {
           type: 'integer',

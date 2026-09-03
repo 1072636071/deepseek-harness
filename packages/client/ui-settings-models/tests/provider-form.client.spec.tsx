@@ -541,10 +541,7 @@ describe('endpoint interrogation', () => {
     fireEvent.click(screen.getByText(en.fetchModels))
     await screen.findByText(en.fetchTitle)
     // The already-configured row starts unchecked; the new one starts checked.
-    // Scoped to the candidate dialog: the model rows' visibility toggles are
-    // also checkboxes and must not pollute this assertion.
-    const picker = screen.getByRole('dialog')
-    const boxes = [...picker.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
+    const boxes = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')]
     expect(boxes.map(box => box.checked)).toEqual([false, true])
     fireEvent.click(screen.getByText(en.fetchAdopt))
 
@@ -559,26 +556,6 @@ describe('endpoint interrogation', () => {
     expect(firstMutate(mutate).ops[0]?.value).toEqual([
       { id: 'kept', contextWindow: 111 },
       { id: 'fresh', contextWindow: 4096, maxTokens: 2048, name: 'Fresh' },
-    ])
-  })
-
-  it('hides a pi-ai model by unchecking its visibility toggle', async () => {
-    const { mutate } = await mountSection({
-      providers: {
-        openai: { baseURL: 'https://proxy.example/v1', models: [{ id: 'kept', contextWindow: 111 }] },
-      },
-    })
-    openEditor('openai')
-
-    const toggle = screen.getByLabelText<HTMLInputElement>(`${en.modelVisible} 1`)
-    expect(toggle.checked).toBe(true)
-    fireEvent.click(toggle)
-    expect(toggle.checked).toBe(false)
-
-    fireEvent.click(screen.getByText(en.apply))
-    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
-    expect(firstMutate(mutate).ops[0]?.value).toEqual([
-      { id: 'kept', contextWindow: 111, visible: false },
     ])
   })
 

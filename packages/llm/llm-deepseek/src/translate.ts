@@ -34,12 +34,6 @@ export function mapFinishReason(reason: string): FinishReason {
     case 'stop': return { kind: 'stop' }
     case 'tool_calls': return { kind: 'tool-calls' }
     case 'length': return { kind: 'max-tokens' }
-    case 'network_error':
-      // Non-standard terminal reason some OpenAI-compatible gateways emit when
-      // their own upstream connection failed; the TRANSPORT code routes it into
-      // the provider retry policy's default retryable codes instead of a
-      // one-off uppercased wire value no policy lists.
-      return { kind: 'error', failure: { message: `model stopped: ${reason}`, code: 'TRANSPORT' } }
     default:
       // content_filter, insufficient_system_resource, future additions.
       return {

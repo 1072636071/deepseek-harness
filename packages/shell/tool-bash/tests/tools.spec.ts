@@ -603,14 +603,7 @@ describe('sandbox escalation through the generic task producer', () => {
     const schema = ctx.tools.schemas().find(item => item.name === 'bash')!
     const properties = schema.parameters.properties as Record<string, { enum?: string[] }>
     expect(properties['sandbox_permissions']?.enum).toEqual(['workspace-write', 'danger-full-access'])
-    expect(schema.description).toContain('`[exit code: N]`')
-    expect(schema.description).toContain('[sandbox: file access denied under <mode> mode]')
-    expect(schema.description).toContain('`sandbox_permissions`')
-    expect(schema.description).toContain('`justification`')
-    expect(schema.description).toContain('wider mode would let it succeed')
     expect(schema.description).toContain('approval prompt')
-    expect(schema.description).toContain('never escalate speculatively')
-    expect(schema.description).toContain('do not retry another way')
 
     for (const args of [
       { command: 'true', description: 'd', sandbox_permissions: 'workspace-write' },

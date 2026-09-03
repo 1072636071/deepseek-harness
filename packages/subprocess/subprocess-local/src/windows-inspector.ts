@@ -9,7 +9,7 @@
  * @module dsh-subprocess-local/windows-inspector
  */
 
-import { spawn } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import koffi from 'koffi'
 import type { SubprocessTerminalSignal } from '@deepseek-ai/dsh-subprocess'
 import type { ProcessIdentity, ProcessInspector, ProcessSnapshot } from './process-inspector.ts'
@@ -143,12 +143,9 @@ export function createWindowsProcessInspector(
 /** Terminate one Windows process tree with taskkill, contained like POSIX group signalling. */
 function taskkillTree(pid: number, force: boolean): void {
   if (pid <= 0) return
-  // Async fire-and-forget for the same reason as the spawn-side twin: delivery
-  // races tree exit like a POSIX signal, every outcome is tolerable, and the
-  // event loop must not block on taskkill. Unref'd so teardown is not delayed.
-  const taskkill = spawn('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])], { stdio: 'ignore', windowsHide: true })
-  taskkill.on('error', () => { /* missing binary: tolerable, like ESRCH for a POSIX group signal */ })
-  taskkill.unref()
+  // Outcome deliberately unchecked: an already-absent tree, exit races, and a
+  // missing taskkill binary are as tolerable here as ESRCH is for POSIX.
+  spawnSync('taskkill', ['/PID', String(pid), '/T', ...(force ? ['/F'] : [])], { stdio: 'ignore' })
 }
 
 declare const nativePtr: unique symbol

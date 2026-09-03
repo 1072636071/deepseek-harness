@@ -16,7 +16,6 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import clsx from 'clsx'
 import type { LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
@@ -210,7 +209,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
     })
   }
 
-  const patch = (index: number, next: Record<string, string | number | boolean | undefined>): void => {
+  const patch = (index: number, next: Record<string, string | number | undefined>): void => {
     onChange(models.map((model, at) => {
       if (at !== index) return model
       // Rebuilt rather than spread over: an emptied optional field has to leave
@@ -350,7 +349,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
       {models.length === 0 ? <p className={styles['modelEmpty']}>{t('modelsEmpty')}</p> : null}
       {models.map((model, index) => (
         <div key={index} className={styles['modelEntry']}>
-          <div className={clsx(styles['modelRow'], styles['modelRowWithVisibility'])}>
+          <div className={styles['modelRow']}>
             <input
               className={styles['input']}
               type="text"
@@ -369,19 +368,6 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
               disabled={disabled}
               onChange={(event) => { patch(index, { name: event.target.value === '' ? undefined : event.target.value }) }}
             />
-            <label className={styles['visibilityToggle']} title={t('modelVisible')}>
-              <input
-                type="checkbox"
-                checked={model['visible'] !== false}
-                aria-label={`${t('modelVisible')} ${index + 1}`}
-                disabled={disabled}
-                onChange={(event) => {
-                  // Checked reverts to absence (visible by default); only
-                  // unchecked materializes a `visible: false` in the profile.
-                  patch(index, { visible: event.target.checked ? undefined : false })
-                }}
-              />
-            </label>
             <button
               type="button"
               className={styles['iconButton']}

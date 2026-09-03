@@ -300,9 +300,9 @@ export function apply(ctx: Context, config: Config): void {
 
   ctx.tools.register(defineTool({
     name: 'job_output',
-    description: 'Read a background job. Stream jobs return output since the last read; final-output jobs '
-      + 'return their result after settlement. Every response ends with `[status: ...]`. Non-blocking '
-      + 'unless `wait: true` (waits up to the configured cap).',
+    description: 'Read a background job. Stream jobs return only output since the previous read; '
+      + 'final-output jobs return their result after settlement. Every response ends with '
+      + '`[status: ...]`. Reads are non-blocking unless `wait: true`, which waits up to the configured cap.',
     // A timed-out wait returns job state rather than a TOOL_TIMEOUT error, so
     // this tool owns its deadline instead of using ToolDefinition.timeoutMs.
     parameters: {

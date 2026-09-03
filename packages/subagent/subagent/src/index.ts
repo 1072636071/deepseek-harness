@@ -107,15 +107,6 @@ export type {
 } from './descriptor.ts'
 export { seedDescriptorTurn } from './descriptor-seed.ts'
 export { SubagentError } from './error.ts'
-export {
-  childExitsWithin,
-  DEFAULT_DISPOSE_EOF_GRACE_MS,
-  DEFAULT_DISPOSE_GRACE_MS,
-  disposeProviderChild,
-  ProviderRunFailure,
-  providerFailureDiagnostic,
-  providerTextTask,
-} from './provider-lifecycle.ts'
 export { settleRun } from './run-settlement.ts'
 export { assertSubagentMaxDepth, delegationDepthOf } from './depth.ts'
 export {

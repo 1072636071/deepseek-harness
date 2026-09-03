@@ -276,7 +276,7 @@ async function resolveListedChildTarget(parent: LocalTarget, name: string): Prom
  * a resolved target plus stat metadata when still available; file contents are
  * never read.
  * @param target - the resolved directory to list; a missing or non-directory target throws.
- * @param signal - aborts the listing, checked before and after the parallel resolve (`FS_ABORTED`).
+ * @param signal - aborts the listing, checked between children (`FS_ABORTED`).
  * @returns one entry per direct child, sorted by name.
  */
 export async function listDirectory(target: LocalTarget, signal?: AbortSignal): Promise<LocalDirEntry[]> {
@@ -299,44 +299,25 @@ export async function listDirectory(target: LocalTarget, signal?: AbortSignal): 
   }
   throwIfAborted(signal, 'list')
 
-  // Children resolve in parallel: the fs threadpool bounds concurrent syscalls,
-  // and each non-symlink child costs exactly one stat. The old serial loop paid
-  // a realpath chain plus a stat per child, so large directories (node_modules)
-  // listed at 2N+ sequential syscalls.
-  const sorted = entries.sort((left, right) => left.name.localeCompare(right.name))
-  throwIfAborted(signal, 'list')
-  const outcomes = await Promise.allSettled(sorted.map(async (entry): Promise<LocalDirEntry> => {
-    // readdir reports the on-disk name, so a non-symlink child's realpath is
-    // exactly the joined parent key — the extra realpath bought nothing.
-    // Symlinks keep the full resolution chain; a child replaced by a symlink
-    // mid-listing (TOCTOU) keeps the joined key, diverging from the serial
-    // loop only inside that race window.
-    const childTarget = entry.isSymbolicLink()
-      ? await resolveListedChildTarget(target, entry.name)
-      : {
-        displayPath: join(target.displayPath, entry.name),
-        targetKey: FsTargetKey(join(target.targetKey, entry.name)),
-      }
-    const childInfo = await probe(childTarget.targetKey)
-    return {
-      name: entry.name,
-      type: childInfo?.type ?? 'other',
-      target: childTarget,
-      ...(childInfo ? { version: childInfo.version } : {}),
-      ...(childInfo?.type === 'file' ? { size: childInfo.size } : {}),
+  const result: LocalDirEntry[] = []
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    throwIfAborted(signal, 'list')
+    try {
+      const childTarget = await resolveListedChildTarget(target, entry.name)
+      const childInfo = await probe(childTarget.targetKey)
+      result.push({
+        name: entry.name,
+        type: childInfo?.type ?? 'other',
+        target: childTarget,
+        ...(childInfo ? { version: childInfo.version } : {}),
+        ...(childInfo?.type === 'file' ? { size: childInfo.size } : {}),
+      })
+    } catch (error: unknown) {
+      throw listingIoError(join(target.displayPath, entry.name), error)
     }
-  }))
-  throwIfAborted(signal, 'list')
-  // Deterministic failure surface: the first failing entry in name order —
-  // exactly what the serial loop threw.
-  const firstFailure = outcomes.findIndex(outcome => outcome.status === 'rejected')
-  if (firstFailure >= 0) {
-    throw listingIoError(
-      join(target.displayPath, (sorted[firstFailure] as Dirent).name),
-      (outcomes[firstFailure] as PromiseRejectedResult).reason,
-    )
+    throwIfAborted(signal, 'list')
   }
-  return outcomes.map(outcome => (outcome as PromiseFulfilledResult<LocalDirEntry>).value)
+  return result
 }
 
 // --- Reading ---

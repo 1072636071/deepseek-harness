@@ -387,27 +387,6 @@ describe('PiAiAdapter provider routing', () => {
     expect(server.paths).toEqual(['/chat/completions'])
   })
 
-  it('classifies a gateway network_error finish_reason as a transport failure', async () => {
-    // Non-standard terminal reason some OpenAI-compatible gateways emit when
-    // their own upstream connection failed; drives the real pi-ai library to
-    // pin the exact wording classifyPiAiError pattern-matches.
-    const events = [
-      '{"choices":[{"delta":{"role":"assistant","content":""},"index":0,"finish_reason":null}]}',
-      '{"choices":[{"delta":{},"index":0,"finish_reason":"network_error"}],"usage":{"prompt_tokens":1,"completion_tokens":0}}',
-      '[DONE]',
-    ]
-    const server = await mockServer([{ events }])
-    const ctx = await harness(server.url)
-
-    const result = await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
-
-    expect(result.finish).toMatchObject({
-      kind: 'error',
-      failure: { message: 'Provider finish_reason: network_error', code: 'TRANSPORT' },
-    })
-    expect(server.paths).toEqual(['/chat/completions'])
-  })
-
   it('uses the resolved catalog context window for usage-based overflow detection', async () => {
     const model = getBuiltinModels('deepseek').find(candidate => candidate.id === 'deepseek-v4-flash')
     if (model === undefined) throw new Error('deepseek-v4-flash missing from pi-ai test catalog')

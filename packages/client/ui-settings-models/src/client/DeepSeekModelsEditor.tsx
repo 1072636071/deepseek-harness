@@ -7,7 +7,6 @@
 
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import clsx from 'clsx'
 import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconPlusOutline16, IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -18,7 +17,7 @@ import styles from './ModelsSection.module.css'
 export type DeepSeekModelDraft = Record<string, unknown>
 
 /** The catalog fields this editor writes. */
-type CatalogField = 'id' | 'name' | 'contextWindow' | 'maxTokens' | 'visible'
+type CatalogField = 'id' | 'name' | 'contextWindow' | 'maxTokens'
 
 /** The two token counts edited as K/M-suffixed text behind a row's disclosure. */
 type CapacityField = 'contextWindow' | 'maxTokens'
@@ -291,7 +290,7 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
           <div className={styles['modelList']}>
             {props.models.map((model, index) => (
               <div className={styles['modelEntry']} key={index}>
-                <div className={clsx(styles['modelRow'], styles['modelRowWithVisibility'])}>
+                <div className={styles['modelRow']}>
                   <input
                     className={styles['input']}
                     type="text"
@@ -318,19 +317,6 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                       update(index, 'name', event.target.value === '' ? undefined : event.target.value)
                     }}
                   />
-                  <label className={styles['visibilityToggle']} title={props.t('modelVisible')}>
-                    <input
-                      type="checkbox"
-                      checked={model['visible'] !== false}
-                      aria-label={`${props.t('modelVisible')} ${String(index + 1)}`}
-                      disabled={props.disabled}
-                      onChange={(event) => {
-                        // Checked reverts to absence (visible by default); only
-                        // unchecked materializes a `visible: false` in the profile.
-                        update(index, 'visible', event.target.checked ? undefined : false)
-                      }}
-                    />
-                  </label>
                   <button
                     type="button"
                     className={styles['iconButton']}

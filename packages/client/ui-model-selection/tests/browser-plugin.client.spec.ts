@@ -90,30 +90,8 @@ async function bench() {
       return Promise.resolve({ ok: true as const, value: { selected } })
     },
   }
-  const remote = Object.assign(new TestRemote(ctx), {
-    session: sessionRemote,
-    llm: {
-      listConfigurableProviders: () => Promise.resolve({ ok: true as const, value: [] }),
-    },
-  })
+  const remote = Object.assign(new TestRemote(ctx), { session: sessionRemote })
   ctx.reflect.provide('remote.session', sessionRemote)
-  ctx.reflect.provide('remote.llm', {
-    listConfigurableProviders: () => Promise.resolve({ ok: true as const, value: [] }),
-  })
-  const visibilityMirror = createSnapshotStore({
-    status: 'unavailable' as const,
-    view: undefined,
-    error: null,
-  })
-  ctx.provide('settingsScope', {
-    describe: () => ({
-      getSnapshot: () => visibilityMirror.getSnapshot(),
-      subscribe: (listener: () => void) => { visibilityMirror.subscribe(listener) },
-      ensure: () => Promise.resolve(),
-      acceptView: () => {},
-      namespace: () => undefined,
-    }),
-  })
   const blocks = new Map<SessionId, { reason: string } | undefined>()
   ctx.provide('conversation', {
     blocks: {
@@ -409,23 +387,5 @@ describe('ui-model-selection dual entry', () => {
     b.ctx.emit('connection/reset')
     await Promise.resolve()
     expect(b.calls).toEqual({ models: 2, select: 0 })
-  })
-
-  it('withholds the config navigation callback when no settings-nav capability is registered', async () => {
-    const b = await bench()
-    b.mint('s1')
-    const face = b.seat().inject!(sid('s1'))
-    expect(face.openModelConfig).toBeUndefined()
-  })
-
-  it('lands 「模型配置」 on the Models section through ctx.uiSettingsNav', async () => {
-    const b = await bench()
-    b.mint('s1')
-    const openSection = vi.fn()
-    b.ctx.provide('uiSettingsNav', { openSection })
-    const face = b.seat().inject!(sid('s1'))
-    expect(face.openModelConfig).toBeTypeOf('function')
-    face.openModelConfig?.()
-    expect(openSection).toHaveBeenCalledWith('models')
   })
 })

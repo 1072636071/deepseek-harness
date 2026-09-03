@@ -57,7 +57,7 @@ const NS = 'settings'
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registrations depend on their slots through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'settingsScope', 'uiSettingsNav']
+export const inject = ['slots', 'locale', 'connection', 'remote', 'remote.settings', 'settingsScope']
 
 /**
  * Register the `settings` dictionaries, the chrome content, and the General
@@ -141,10 +141,6 @@ export function apply(ctx: ClientContext): void {
         },
         subscribe: listener => ctx.slots.subscribe('settings.onboarding', listener),
       },
-      // The shell lands an external model-config handoff on its section by
-      // reading the pending request published on the settings-navigation
-      // capability (provided by ui-settings, the base this shell depends on).
-      nav: ctx.uiSettingsNav.store,
     },
   })
   ctx.slots.inject('sidebar.settings', () => ctx.slots.register({

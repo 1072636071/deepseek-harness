@@ -7,7 +7,7 @@
  * @module dsh-subprocess-local/spawn
  */
 
-import { type ChildProcess, spawn } from 'node:child_process'
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
 import type { Readable } from 'node:stream'
 import { randomBytes } from 'node:crypto'
 import { closeSync, mkdtempSync, openSync, unlinkSync, writeSync } from 'node:fs'
@@ -275,15 +275,10 @@ export function killGroup(pid: number, sig: NodeJS.Signals): void {
  */
 export function taskkillProcessTree(pid: number): void {
   if (pid <= 0) return
-  // Fire-and-forget async spawn: delivery races tree exit exactly like a POSIX
-  // group signal, so an already-absent tree (status 128), exit races, and a
-  // missing taskkill binary (an 'error' event, contained below) must not break
-  // idempotent teardown — and the event loop never blocks on taskkill the way
-  // the former spawnSync did. Unref'd so a teardown that exits immediately is
-  // not delayed; Windows keeps the orphaned taskkill running to completion.
-  const taskkill = spawn('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
-  taskkill.on('error', () => { /* missing binary: tolerable, like ESRCH for a POSIX group signal */ })
-  taskkill.unref()
+  // Outcome deliberately unchecked: an already-absent tree (status 128), exit
+  // races, and a missing taskkill binary (spawnSync reports, never throws) are
+  // as tolerable here as ESRCH is for a POSIX group signal.
+  spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
 }
 
 /**

@@ -43,9 +43,10 @@ export const Config: z<Config> = z.object({
 })
 
 const DESCRIPTION_HEAD =
-  'Record a structured task list for the current work. Send the ENTIRE list every call — it '
-  + 'REPLACES the previous list (no partial updates, no per-item edits). Add one todo per concrete '
-  + 'step to plan multi-step work and show progress. '
+  'Record and update a structured task list for the current work. Send the ENTIRE '
+  + 'list every call — it REPLACES the previous list (there are no partial updates, '
+  + 'no per-item edits). Use it to plan multi-step work and show progress: add one '
+  + 'todo per concrete step before you start. '
 
 const DESCRIPTION_PARALLEL =
   'Mark every todo being actively worked '
@@ -59,9 +60,10 @@ const DESCRIPTION_SINGLE =
 
 const DESCRIPTION_TAIL =
   'Mark a todo '
-  + '`completed` the moment it is done (do not batch); allow no `in_progress` item only once all '
-  + 'work is complete. Skip for trivial one-step tasks. Statuses: `pending` (not started), '
-  + '`in_progress` (now), `completed` (finished).'
+  + '`completed` the moment it is done (do not batch completions), and allow no '
+  + '`in_progress` item only once all work is complete. Skip the list for trivial '
+  + 'single-step tasks. Statuses: `pending` (not started), `in_progress` (being '
+  + 'worked on now), `completed` (finished).'
 
 /**
  * The model-facing description for one activation. The active-status clause is the only part that

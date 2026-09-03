@@ -10,11 +10,8 @@ import {
   createAfterScheduleRecord,
   createAtScheduleRecord,
   createEveryScheduleRecord,
-  applyScheduleEvents,
   decodeScheduleChange,
-  emptyScheduleFold,
   foldScheduleEvents,
-  snapshotScheduleFold,
   MIN_EVERY_INTERVAL_SECONDS,
   renderEveryReminderBatchFraming,
   renderReminderFraming,
@@ -478,48 +475,5 @@ describe('absolute record and time-zone resolution', () => {
       deliveryMode: 'session-local',
     })
     expect(renderReminderFraming(record)).toContain('occurrence_at: 2026-08-06T01:00:00.000Z')
-  })
-})
-
-describe('incremental schedule fold', () => {
-  it('matches the whole-log fold for any chunked application of the same events', () => {
-    const events: SessionEvent[] = [
-      // A completed (dispatched away) one-shot, a deleted active schedule, and
-      // fresh creates — every mutation class the fold tracks.
-      scheduleEvent(createData('schedule-1'), 0),
-      scheduleEvent({ version: 1, operation: 'dispatch', id: 'schedule-1' }, 1),
-      scheduleEvent(createData('schedule-2', 'second', '2026-08-05T13:00:00.000Z'), 2),
-      scheduleEvent({ version: 1, operation: 'delete', id: 'schedule-2' }, 3),
-      scheduleEvent(createData('schedule-3', 'third', '2026-08-05T14:00:00.000Z'), 4),
-      scheduleEvent(createData('schedule-4', 'fourth', '2026-08-05T15:00:00.000Z'), 5),
-    ]
-    const whole = foldScheduleEvents(events, 0)
-    expect(whole.active.map(record => record.id)).toEqual([ScheduleId('schedule-3'), ScheduleId('schedule-4')])
-    expect(whole.seenIds).toHaveLength(4)
-
-    // Apply the same events in arbitrary chunk boundaries onto an incremental
-    // accumulator: every intermediate snapshot must equal a full refold of the
-    // same prefix.
-    for (const chunkSizes of [[3, 2, 2], [1, 1, 1, 1, 1, 1, 1], [4, 3], [6, 1]]) {
-      const state = emptyScheduleFold()
-      let cursor = 0
-      for (const size of chunkSizes) {
-        applyScheduleEvents(state, events, cursor, cursor + size)
-        cursor += size
-        const incremental = snapshotScheduleFold(state)
-        const refolded = foldScheduleEvents(events.slice(0, cursor), 0)
-        expect(incremental).toEqual(refolded)
-      }
-    }
-  })
-
-  it('preserves seed-boundary semantics: the seed prefix never enters the fold', () => {
-    const seed = [scheduleEvent(createData('seeded'), 0)]
-    const suffix = [scheduleEvent(createData('suffix-a'), 1), scheduleEvent({ version: 1, operation: 'delete', id: 'seeded' }, 2)]
-    // The seeded id is invisible to the fold, so deleting it fails in BOTH
-    // the whole-log fold and the incremental accumulator.
-    expect(() => foldScheduleEvents([...seed, ...suffix], 1)).toThrow(/delete targets inactive id/)
-    const state = emptyScheduleFold()
-    expect(() => applyScheduleEvents(state, [...seed, ...suffix], 1, 3)).toThrow(/delete targets inactive id/)
   })
 })

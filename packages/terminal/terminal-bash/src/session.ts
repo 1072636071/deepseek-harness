@@ -28,64 +28,22 @@ import { CONTROLLED_PROMPT, TerminalSanitizer } from './sanitize.ts'
 // Node exposes this package's CommonJS main as default-only, so load its named export through require.
 const { Terminal: HeadlessTerminal } = createRequire(import.meta.url)('@xterm/headless') as typeof import('@xterm/headless')
 
-/** UTF-8 encoded size of one UTF-16 code unit, matching `Buffer.byteLength`'s replacement of unpaired surrogates. */
-function utf8Size(unit: number, paired: boolean): number {
-  if (paired) return 4
-  if (unit < 0x80) return 1
-  if (unit < 0x800) return 2
-  return 3 // U+0800–U+FFFF, and an unpaired surrogate encodes as U+FFFD
-}
-
-/**
- * The UTF-16 start index of the maximal code-point-aligned suffix of `text`
- * whose bytes — plus `initialBytes` already spent before it — fit `maxBytes`.
- * Walks backward one code point at a time instead of materializing the whole
- * string, so the cost is proportional to the KEPT suffix.
- */
-function suffixStartIndex(text: string, maxBytes: number, initialBytes: number): number {
-  let bytes = initialBytes
-  let start = text.length
-  while (start > 0) {
-    let from = start - 1
-    let paired = false
-    const unit = text.charCodeAt(from)
-    if (unit >= 0xDC00 && unit <= 0xDFFF && from > 0) {
-      const lead = text.charCodeAt(from - 1)
-      if (lead >= 0xD800 && lead <= 0xDBFF) {
-        from -= 1
-        paired = true
-      }
-    }
-    const size = utf8Size(text.charCodeAt(from), paired)
-    if (bytes + size > maxBytes) break
-    bytes += size
-    start = from
-  }
-  return start
-}
-
 function utf8Tail(text: string, maxBytes: number): { text: string; truncated: boolean } {
   if (Buffer.byteLength(text) <= maxBytes) return { text, truncated: false }
-  return { text: text.slice(suffixStartIndex(text, maxBytes, 0)), truncated: true }
+  const chars = Array.from(text)
+  let bytes = 0
+  let start = chars.length
+  while (start > 0) {
+    const next = Buffer.byteLength(chars[start - 1] as string)
+    if (bytes + next > maxBytes) break
+    bytes += next
+    start -= 1
+  }
+  return { text: chars.slice(start).join(''), truncated: true }
 }
 
-/**
- * Exported for parity tests: the bounded-tail contract is subtle enough that
- * the property suite compares this implementation against a naive reference.
- */
-export class BoundedTextBuffer {
-  /**
-   * The split segments of the retained tail; `lines.join('\n')` equals the
-   * historical single-string `value` exactly. Keeping the segments separately
-   * lets every append cost O(chunk) — the old `value += text` +
-   * `split('\n')` + `Array.from` tail scan reprocessed the WHOLE retained
-   * buffer per chunk, O(cap) at the 4 MB scrollback default.
-   */
-  private lines: string[] = []
-  /** `Buffer.byteLength` of each retained line, tracked so drops never rescan. */
-  private lineBytes: number[] = []
-  /** `Buffer.byteLength(lines.join('\n'))`: sum of lineBytes plus one separator per adjacent pair. */
-  private totalBytes = 0
+class BoundedTextBuffer {
+  private value = ''
   private dropped = false
 
   constructor(
@@ -95,104 +53,29 @@ export class BoundedTextBuffer {
 
   append(text: string): void {
     if (text.length === 0) return
-    const pieces = text.split('\n')
-    const first = pieces[0] as string
-    if (this.lines.length === 0) {
-      this.pushBack(first)
-    } else {
-      // The first piece continues the current last line; only that line's
-      // entry grows — no other retained byte is touched.
-      const last = this.lines.length - 1
-      const firstBytes = Buffer.byteLength(first)
-      this.lines[last] += first
-      this.lineBytes[last] = (this.lineBytes[last] as number) + firstBytes
-      this.totalBytes += firstBytes
+    this.value += text
+    if (this.maxLines !== undefined) {
+      const lines = this.value.split('\n')
+      if (lines.length > this.maxLines) {
+        this.value = lines.slice(lines.length - this.maxLines).join('\n')
+        this.dropped = true
+      }
     }
-    for (let index = 1; index < pieces.length; index += 1) {
-      this.pushBack(pieces[index] as string)
-    }
-    this.enforceLimits()
+    const tail = utf8Tail(this.value, this.maxBytes)
+    this.value = tail.text
+    this.dropped ||= tail.truncated
   }
 
   consume(): TerminalSendRead {
-    const delta = this.lines.join('\n')
+    const delta = this.value
     const truncated = this.dropped
-    this.lines = []
-    this.lineBytes = []
-    this.totalBytes = 0
+    this.value = ''
     this.dropped = false
     return { delta, truncated }
   }
 
   snapshot(): { text: string; truncated: boolean } {
-    return { text: this.lines.join('\n'), truncated: this.dropped }
-  }
-
-  private pushBack(line: string): void {
-    const bytes = Buffer.byteLength(line)
-    if (this.lines.length > 0) this.totalBytes += 1 // the '\n' before this line
-    this.totalBytes += bytes
-    this.lines.push(line)
-    this.lineBytes.push(bytes)
-  }
-
-  /** Drop the first `count` lines, updating the byte ledger in O(1) per dropped line. */
-  private dropFirstLines(count: number): void {
-    for (let index = 0; index < count; index += 1) {
-      this.totalBytes -= (this.lineBytes.shift() as number) + (this.lines.length > 1 ? 1 : 0)
-      this.lines.shift()
-    }
-  }
-
-  /**
-   * Restore exactly the tail the historical whole-string implementation
-   * produced: the maximal code-point-aligned suffix of `lines.join('\n')`
-   * fitting `maxBytes`, where '\n' separators participate as ordinary 1-byte
-   * characters and the suffix may therefore start inside ANY line (or at a
-   * separator). The byte ledger replicates that flat backward scan without
-   * touching settled bytes: whole lines that fit are skipped in O(1), and the
-   * scan descends into exactly one line — where the cumulative budget breaks
-   * — so every retained byte is examined at most once (amortized O(output)).
-   */
-  private enforceLimits(): void {
-    if (this.maxLines !== undefined && this.lines.length > this.maxLines) {
-      this.dropFirstLines(this.lines.length - this.maxLines)
-      this.dropped = true
-    }
-    if (this.totalBytes <= this.maxBytes) return
-    let rest = 0 // bytes of the retained suffix behind the line being examined
-    let boundary = -1 // line index where the cumulative budget breaks
-    let cutIndex = 0 // UTF-16 index into the boundary line; 0 = whole line kept
-    for (let i = this.lines.length - 1; i >= 0; i -= 1) {
-      const lineBytes = this.lineBytes[i] as number
-      if (rest + lineBytes <= this.maxBytes) {
-        rest += lineBytes
-        if (i > 0) {
-          if (rest + 1 > this.maxBytes) {
-            // The '\n' before this line breaks the budget: the suffix starts
-            // at this line's first character.
-            boundary = i
-            break
-          }
-          rest += 1
-        }
-        continue
-      }
-      // The budget breaks inside this line: find where its kept suffix starts.
-      boundary = i
-      cutIndex = suffixStartIndex(this.lines[i] as string, this.maxBytes, rest)
-      break
-    }
-    /* v8 ignore next -- totalBytes > maxBytes guarantees a breaking line */
-    if (boundary < 0) return
-    if (boundary > 0) this.dropFirstLines(boundary)
-    if (cutIndex > 0) {
-      const line = this.lines[0] as string
-      this.lines[0] = line.slice(cutIndex)
-      this.lineBytes[0] = Buffer.byteLength(this.lines[0] as string)
-    }
-    this.totalBytes = (this.lineBytes[0] as number) + rest
-    this.dropped = true
+    return { text: this.value, truncated: this.dropped }
   }
 }
 

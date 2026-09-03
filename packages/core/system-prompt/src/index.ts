@@ -564,10 +564,6 @@ export class SystemPrompt extends Service {
       const schemas = result.schemas.map(({ name, description, parameters }): ToolSchema => ({
         name,
         description,
-        // A FRESH clone per assemble is contractual: consumers may mutate the
-        // assembled schemas within one step ("one-step mutations do not leak
-        // into future assemblies"), so the payload cannot be shared or cached
-        // across assembles.
         parameters: structuredClone(parameters),
       }))
       const acceptedKnownNames = result.knownNames ?? schemas.map(tool => tool.name)

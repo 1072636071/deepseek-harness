@@ -24,15 +24,11 @@ export {
   createAtScheduleRecord,
   createEveryScheduleRecord,
   decodeScheduleChange,
-  applyScheduleEvents,
-  emptyScheduleFold,
   foldScheduleEvents,
   renderReminderFraming,
   renderEveryReminderBatchFraming,
   resolveEveryOccurrence,
   scheduleView,
-  snapshotScheduleFold,
-  type ScheduleFoldState,
 } from './domain.ts'
 export { registerScheduleTools } from './tools.ts'
 

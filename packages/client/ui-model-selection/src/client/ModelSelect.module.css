@@ -89,7 +89,7 @@
   box-shadow: var(--dsw-elevation-prominent);
   color: var(--dsw-alias-label-primary);
   /* Elevated surface: the scrollbar thumb takes the l2 elevation tokens.
-     Declared here rather than on the scrolling model pane child so the
+     Declared here rather than on the scrolling `.groups` child so the
      elevation choice sits with the surface; the custom properties inherit
      down to whichever descendant actually scrolls (see ui-theme
      styles/scrollbar.css for the rebinding contract). */
@@ -136,69 +136,25 @@
   cursor: pointer;
 }
 
-/* Two-column master-detail model list: the left provider column stays the
-   narrow navigator, the right model column carries the selectable rows. */
-.columns {
-  display: flex;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.providerColumn {
-  flex: 0 0 auto;
-  min-height: 0;
-  overflow-y: auto;
-  border-right: 1px solid var(--dsw-alias-border-inverted);
-  margin-right: 4px;
-  padding-right: 4px;
-}
-
-.modelColumn {
-  flex: 1 1 auto;
-  min-width: 0;
+.groups {
   min-height: 0;
   overflow-y: auto;
 }
 
-.providerOption {
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 36px;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 10px;
-  outline: none;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
-  text-align: left;
-  cursor: pointer;
+.group + .group {
+  margin-top: 4px;
 }
 
-.providerOption:hover,
-.providerOption:focus-visible {
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.providerActive {
-  background: var(--dsw-alias-interactive-bg-hover-accent);
+.groupTitle {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 5px 8px 3px;
+  background: var(--dsw-specific-menu);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
   font-weight: 500;
-}
-
-.providerActive:hover,
-.providerActive:focus-visible {
-  /* Keep the selected state's stronger tint readable on hover rather than
-     falling back to base hover. */
-  background: var(--dsw-alias-interactive-bg-hover-accent);
-}
-
-.providerName {
-  overflow: hidden;
-  font-size: 14px;
-  line-height: 20px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .option {

@@ -10,7 +10,7 @@
  * Real-`rg` behavior is pinned separately in integration.spec.ts.
  */
 
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { join, sep } from 'node:path'
 import { createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -20,7 +20,6 @@ import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import type { SubprocessCollectedOutputs, SubprocessHandle, SubprocessOutcome, SubprocessOutputRead, SubprocessOutputReader, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { rgPath } from '@vscode/ripgrep'
-import * as searchCore from '../src/search-core.ts'
 import { SpillLocator, SpillStore } from '@deepseek-ai/dsh-spill'
 import type { SaveTextSpill, SpillRef } from '@deepseek-ai/dsh-spill'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
@@ -968,34 +967,6 @@ describe('grep results', () => {
   it('strips a CRLF terminator from the matched line text', () => {
     const matches = parseGrepMatches(`${matchLine('a.txt', 1, 'windows line\r\n')}\n`)
     expect(matches[0]?.line).toBe('windows line')
-  })
-
-  it('computes ONE retention pass shared by render, meta, and the spill post-execute', async () => {
-    const retainSpy = vi.spyOn(searchCore, 'retainGrepMatches')
-    try {
-      const { ctx, subprocess } = await setup({ config: { grepMaxMatches: 2 } })
-      subprocess.handler = () => runResult([
-        matchLine('a.ts', 1, 'one'),
-        matchLine('a.ts', 2, 'two'),
-        matchLine('b.ts', 3, 'three'),
-        '',
-      ].join('\n'))
-      const result = await call(ctx, 'grep', { pattern: 'e' }, { agent: agent('/w') })
-      if (result.isError) throw new Error('expected grep success')
-      // render + presentationMeta + the capped post-execute projection used to
-      // rebuild the preview retainer three times; the shared pass yields the
-      // same text and meta with a single retention over the matches.
-      expect(retainSpy).toHaveBeenCalledTimes(1)
-      expect(text(result)).toContain('Found 2 of 3 matches\n\na.ts\nLine 1: one\nLine 2: two')
-      expect(result.meta).toEqual({
-        shape: 'matches',
-        files: [{ path: 'a.ts', matches: [{ lineNumber: 1, line: 'one' }, { lineNumber: 2, line: 'two' }] }],
-        truncated: true,
-        total: 3,
-      })
-    } finally {
-      retainSpy.mockRestore()
-    }
   })
 
   it('caps at grepMaxMatches and spills the full formatted match list', async () => {

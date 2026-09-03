@@ -1,12 +1,11 @@
 /**
  * ModelSelect: the composer's named model seat (`conversation.input.model`).
  * Two-level selection per figma 496:26454's MenuDropdown: the root menu is
- * the Model / Effort row pair (label + current value + a right chevron), each
- * drilling into its own list — the provider-grouped model list over the shared
- * directory, and the effort levels — plus an optional model-config row that hands
- * off to the settings panel when a navigation callback is injected. The trigger
- * (313:14108's ToggleButton) shows both: model name + effort in the caption
- * tone. Data and submission ride the SAME per-session ModelDirectory as the
+ * the Model / Effort row pair (label + current value + a right chevron),
+ * each drilling into its own list — the provider-grouped model list over
+ * the shared directory, and the effort levels. The trigger (313:14108's
+ * ToggleButton) shows both: model name + effort in the caption tone.
+ * Data and submission ride the SAME per-session ModelDirectory as the
  * /model popup; exact-model reasoning metadata and the selected effort come
  * from the Host rather than a client-owned vocabulary. A rejected selection
  * announces through the shared transient Toast anchored to the composer
@@ -22,9 +21,7 @@ import {
   IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
   IconWarningOutline16, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { ModelVisibilityState } from './visibility.ts'
 import type { ModelSelectInjected } from './slots.ts'
 import css from './ModelSelect.module.css'
 
@@ -38,14 +35,6 @@ interface EffortChoice {
   label: string
 }
 
-/** Shared empty set for "this provider hides nothing" lookups. */
-const EMPTY_SET: ReadonlySet<string> = new Set()
-
-/** Empty visibility store: a render without an injected visibility hides nothing. */
-const EMPTY_VISIBILITY = createSnapshotStore<ModelVisibilityState>({
-  status: 'ready', error: null, hidden: new Map(),
-})
-
 /**
  * Render the composer model seat.
  * @param props - owner share (locked) + injected face (shared directory
@@ -53,25 +42,15 @@ const EMPTY_VISIBILITY = createSnapshotStore<ModelVisibilityState>({
  * @returns the trigger and, while open, the two-level menu.
  */
 export function ModelSelect(
-  { locked, available, directory, visibility, load, select, openModelConfig, t }:
+  { locked, available, directory, load, select, t }:
   ModelSelectInjected & { locked: boolean } & PropsLocale<'model'>,
 ) {
   const state = useSyncExternalStore(
     fn => directory.subscribe(fn),
     () => directory.getSnapshot(),
   )
-  // The visibility snapshot (hidden model ids per provider); empty while the
-  // settings scene is absent, so hiding only ever reflects a real configuration.
-  const visibilityState = useSyncExternalStore(
-    fn => visibility?.subscribe(fn) ?? EMPTY_VISIBILITY.subscribe(fn),
-    () => (visibility ?? EMPTY_VISIBILITY).getSnapshot(),
-  )
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('root')
-  // The provider whose models fill the right pane column. Reset to the current
-  // selection's group (falling back to the first) every time the model pane
-  // opens, so re-entering the list lands on the provider already in use.
-  const [activeGroup, setActiveGroup] = useState<string | undefined>(undefined)
   // The in-menu error strip serves catalog loads (its Retry re-runs the
   // load); a rejected SELECTION announces through the transient toast
   // instead, so the strip renders only while the latest failure-capable
@@ -135,32 +114,12 @@ export function ModelSelect(
     return () => { document.removeEventListener('mousedown', closeOutside) }
   }, [open])
 
-  // A catalog refresh may drop the provider the pane was showing; fall back to
-  // the first advertised group rather than leaving the right column blank.
-  useEffect(() => {
-    if (activeGroup === undefined) return
-    if (!state.groups.some(group => group.id === activeGroup)) {
-      setActiveGroup(state.groups[0]?.id)
-    }
-  }, [state.groups, activeGroup])
-
   if (!available) return null
 
   const show = (): void => {
     setPane('root')
     setOpen(true)
     reload()
-  }
-
-  const openModelPane = (): void => {
-    // Land the right column on the provider already serving this session,
-    // when the catalog still carries it; otherwise the first advertised group.
-    const current = state.current?.provider
-    setActiveGroup(
-      state.groups.some(group => group.id === current) ? current
-        : state.groups[0]?.id,
-    )
-    setPane('model')
   }
 
   const close = (restoreFocus = false): void => {
@@ -288,7 +247,7 @@ export function ModelSelect(
         >
           {pane === 'root' && (
             <>
-              <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={openModelPane}>
+              <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('model') }}>
                 <span className={css.cellLabel}>{t('menu.model')}</span>
                 <span className={css.cellValue}>{modelLabel}</span>
                 <IconChevronRightOutline14 className={css.cellChevron} />
@@ -297,26 +256,6 @@ export function ModelSelect(
                 <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('effort') }}>
                   <span className={css.cellLabel}>{t('menu.effort')}</span>
                   <span className={css.cellValue}>{effortLabel}</span>
-                  <IconChevronRightOutline14 className={css.cellChevron} />
-                </button>
-              )}
-              {/* The config row leaves the menu for the settings panel, so it
-                  carries no drilled value; the empty cell keeps the chevron
-                  right-aligned with the rows above. Absent navigation
-                  capability hides the whole row (no dead control). */}
-              {openModelConfig !== undefined && (
-                <button
-                  ref={itemRef()}
-                  type="button"
-                  role="menuitem"
-                  className={css.cell}
-                  onClick={() => {
-                    close()
-                    openModelConfig()
-                  }}
-                >
-                  <span className={css.cellLabel}>{t('menu.config')}</span>
-                  <span className={css.cellValue} />
                   <IconChevronRightOutline14 className={css.cellChevron} />
                 </button>
               )}
@@ -340,81 +279,42 @@ export function ModelSelect(
                   <button type="button" className={css.retry} onClick={reload}>{t('retry')}</button>
                 </div>
               ))}
-              <div className={css.columns}>
-                <div className={css.providerColumn}>
-                  {state.groups.map((group) => {
-                    const active = activeGroup === group.id
-                    return (
-                      <button
-                        ref={itemRef()}
-                        type="button"
-                        role="menuitem"
-                        aria-current={active ? 'true' : undefined}
-                        aria-controls={`${id}-models-${group.id}`}
-                        className={clsx(css.providerOption, active && css.providerActive)}
-                        key={group.id}
-                        onClick={() => { setActiveGroup(group.id) }}
-                      >
-                        <span className={css.providerName}>{group.name}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-                <div className={css.modelColumn}>
-                  {(() => {
-                    const activeGroupState = state.groups.find(group => group.id === activeGroup)
-                    if (activeGroupState === undefined) {
-                      return state.status === 'ready'
-                        ? <div className={css.empty}>{t('empty.models')}</div>
-                        : null
-                    }
-                    const hiddenModels = visibilityState.hidden.get(activeGroupState.id) ?? EMPTY_SET
-                    // Visible = every advertised model except those hidden and
-                    // not the current selection. The empty message follows the
-                    // FILTERED count, so a provider whose models are all hidden
-                    // (and none is the current selection) shows it too.
-                    const visibleModels = activeGroupState.models.filter((model) => {
-                      const selected = state.current?.provider === activeGroupState.id
-                        && state.current.model === model.id
-                      return !hiddenModels.has(model.id) || selected
-                    })
-                    const empty = state.status === 'ready' && visibleModels.length === 0
-                      ? <div className={css.empty}>{t('empty.models')}</div>
-                      : null
-                    return (
-                      <div id={`${id}-models-${activeGroupState.id}`} role="group" aria-label={activeGroupState.name}>
-                        {visibleModels.map((model) => {
-                          const selected = state.current?.provider === activeGroupState.id
-                            && state.current.model === model.id
-                          return (
-                            <button
-                              ref={itemRef()}
-                              type="button"
-                              role="menuitemradio"
-                              aria-checked={selected}
-                              className={clsx(css.option, selected && css.selected)}
-                              key={model.id}
-                              title={model.name}
-                              disabled={busy}
-                              onClick={() => {
-                                choose({ provider: activeGroupState.id, model: model.id })
-                              }}
-                            >
-                              <span className={css.optionCopy}>
-                                <span className={css.modelName}>{model.name}</span>
-                              </span>
-                              <span className={css.check}>
-                                {selected ? <IconCheckOutline16 /> : null}
-                              </span>
-                            </button>
-                          )
-                        })}
-                        {empty}
-                      </div>
-                    )
-                  })()}
-                </div>
+              <div className={clsx(css.groups, 'scrollable')}>
+                {state.groups.map((group) => {
+                  const headingId = `${id}-${group.id}`
+                  return (
+                    <section role="group" aria-labelledby={headingId} className={css.group} key={group.id}>
+                      <div className={css.groupTitle} id={headingId}>{group.name}</div>
+                      {group.models.map((model) => {
+                        const selected = state.current?.provider === group.id && state.current.model === model.id
+                        return (
+                          <button
+                            ref={itemRef()}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={selected}
+                            className={clsx(css.option, selected && css.selected)}
+                            key={model.id}
+                            title={model.name}
+                            disabled={busy}
+                            onClick={() => { choose({ provider: group.id, model: model.id }) }}
+                          >
+                            <span className={css.optionCopy}>
+                              <span className={css.modelName}>{model.name}</span>
+                            </span>
+                            <span className={css.check}>
+                              {selected ? <IconCheckOutline16 /> : null}
+                            </span>
+                          </button>
+                        )
+                      })}
+                    </section>
+                  )
+                })}
               </div>
+              {state.status === 'ready' && choices.length === 0 && (
+                <div className={css.empty}>{t('empty.models')}</div>
+              )}
             </>
           )}
 
