@@ -2,9 +2,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
-import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
+import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ComponentProps } from 'react'
 import type { ModelDirectoryState } from '../src/client/directory.ts'
+import type { ModelVisibilityState } from '../src/client/visibility.ts'
 import { ModelSelect } from '../src/client/ModelSelect.tsx'
 import { zh } from '../src/client/locales.ts'
 import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
@@ -466,5 +467,164 @@ describe('ModelSelect two-column layout', () => {
         model: 'deepseek-v4-pro',
       })
     })
+  })
+})
+
+describe('ModelSelect visibility filtering', () => {
+  const visibility = (hiddenIds: readonly string[]): SnapshotStore<ModelVisibilityState> =>
+    createSnapshotStore<ModelVisibilityState>({
+      status: 'ready',
+      error: null,
+      hidden: new Map([['deepseek-official', new Set(hiddenIds)]]),
+    })
+
+  it('hides profiles that are configured as not visible', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      groups: [{
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [
+          { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash' },
+          { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+        ],
+      }],
+    }))
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      visibility={visibility(['deepseek-v4-pro'])}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })).toBeTruthy()
+    expect(screen.queryByRole('menuitemradio', { name: 'DeepSeek-V4-Pro' })).toBeNull()
+  })
+
+  it('keeps the current selection listed even when hidden', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      groups: [{
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [
+          { id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash' },
+          { id: 'deepseek-v4-pro', name: 'DeepSeek-V4-Pro' },
+        ],
+      }],
+    }))
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      visibility={visibility(['deepseek-v4-flash'])}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })).toBeTruthy()
+    // The hidden current selection is still checked (aria-checked stays true).
+    expect(screen.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash' })
+      .getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('shows the empty message when the active provider advertises no models', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      groups: [{
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [],
+      }],
+    }))
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      visibility={visibility([])}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    // A provider with no models renders the existing empty message.
+    expect(screen.getByText('没有可用的模型。')).toBeTruthy()
+  })
+
+  it('re-renders immediately when the visibility store changes', async () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      groups: [{
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [
+          { id: 'flash', name: 'Flash' },
+          { id: 'pro', name: 'Pro' },
+        ],
+      }],
+    }))
+    const visibilityStore = createSnapshotStore<ModelVisibilityState>({
+      status: 'ready', error: null, hidden: new Map(),
+    })
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      visibility={visibilityStore}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    expect(screen.getByRole('menuitemradio', { name: 'Pro' })).toBeTruthy()
+
+    // A document update hides Pro behind the scenes; the open menu reflects it
+    // without any load/refresh.
+    visibilityStore.set({ status: 'ready', error: null, hidden: new Map([['deepseek-official', new Set(['pro'])]]) })
+    await waitFor(() => {
+      expect(screen.queryByRole('menuitemradio', { name: 'Pro' })).toBeNull()
+    })
+    expect(screen.getByRole('menuitemradio', { name: 'Flash' })).toBeTruthy()
+  })
+
+  it('shows the empty message when every model in the provider is hidden', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state({
+      current: { provider: 'other', model: 'elsewhere' },
+      groups: [{
+        id: 'deepseek-official',
+        name: 'DeepSeek',
+        models: [
+          { id: 'flash', name: 'Flash' },
+          { id: 'pro', name: 'Pro' },
+        ],
+      }],
+    }))
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      visibility={visibility(['flash', 'pro'])}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    // Both models hidden and neither is the current selection → empty message.
+    expect(screen.queryByRole('menuitemradio')).toBeNull()
+    expect(screen.getByText('没有可用的模型。')).toBeTruthy()
   })
 })

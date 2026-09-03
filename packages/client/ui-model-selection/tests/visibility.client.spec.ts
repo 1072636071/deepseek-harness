@@ -72,7 +72,7 @@ describe('hiddenModelsOf', () => {
 })
 
 describe('ModelVisibilityDirectory', () => {
-  it('publishes the hidden set and reloads the catalog only on change', async () => {
+  it('publishes an empty hidden set when no model is hidden', async () => {
     const mirrorFace = mirror({
       status: 'ready', view: {
         writable: true, hasDocument: true, namespaces: [
@@ -82,20 +82,17 @@ describe('ModelVisibilityDirectory', () => {
         ],
       }, error: null,
     })
-    const onChange = vi.fn()
     const providers = vi.fn().mockResolvedValue([PROVIDER])
-    const dir = new ModelVisibilityDirectory(providers, mirrorFace.face, onChange)
+    const dir = new ModelVisibilityDirectory(providers, mirrorFace.face)
     await dir.refresh()
 
     const snapshot = dir.store.getSnapshot()
     expect(snapshot.status).toBe('ready')
     expect(snapshot.hidden.size).toBe(0)
-    // No hidden models → no catalog reload on the initial resolve.
-    expect(onChange).not.toHaveBeenCalled()
     dir.dispose()
   })
 
-  it('derives hidden ids and notifies a change exactly once', async () => {
+  it('derives the hidden ids from the profile models array', async () => {
     const mirrorFace = mirror({
       status: 'ready', view: {
         writable: true, hasDocument: true, namespaces: [
@@ -105,23 +102,15 @@ describe('ModelVisibilityDirectory', () => {
         ],
       }, error: null,
     })
-    const onChange = vi.fn()
     const providers = vi.fn().mockResolvedValue([PROVIDER])
-    const dir = new ModelVisibilityDirectory(providers, mirrorFace.face, onChange)
+    const dir = new ModelVisibilityDirectory(providers, mirrorFace.face)
     await dir.refresh()
 
-    const snapshot = dir.store.getSnapshot()
-    expect(snapshot.hidden.get('deepseek-official')).toEqual(new Set(['flash']))
-    // A change from the empty baseline reloads the catalog once.
-    expect(onChange).toHaveBeenCalledTimes(1)
-
-    // Re-derive with identical sources does not fire again.
-    await dir.refresh()
-    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(dir.store.getSnapshot().hidden.get('deepseek-official')).toEqual(new Set(['flash']))
     dir.dispose()
   })
 
-  it('reflects a visibility toggled back to visible via a document update', async () => {
+  it('re-derives when the mirror publishes a document update', async () => {
     const mirrorFace = mirror({
       status: 'ready', view: {
         writable: true, hasDocument: true, namespaces: [
@@ -131,12 +120,7 @@ describe('ModelVisibilityDirectory', () => {
         ],
       }, error: null,
     })
-    const onChange = vi.fn()
-    const dir = new ModelVisibilityDirectory(
-      () => Promise.resolve([PROVIDER]),
-      mirrorFace.face,
-      onChange,
-    )
+    const dir = new ModelVisibilityDirectory(() => Promise.resolve([PROVIDER]), mirrorFace.face)
     await dir.refresh()
     expect(dir.store.getSnapshot().hidden.get('deepseek-official')).toEqual(new Set(['flash']))
 
@@ -157,7 +141,7 @@ describe('ModelVisibilityDirectory', () => {
 
   it('publishes an error state when the mirror fails, and stays loading before an answer', () => {
     const loading = mirror({ status: 'idle', view: undefined, error: null })
-    const dir = new ModelVisibilityDirectory(() => Promise.resolve([PROVIDER]), loading.face, vi.fn())
+    const dir = new ModelVisibilityDirectory(() => Promise.resolve([PROVIDER]), loading.face)
     expect(dir.store.getSnapshot().status).toBe('loading')
 
     loading.store.set({ status: 'ready', view: undefined, error: 'settings unavailable' })
@@ -166,7 +150,7 @@ describe('ModelVisibilityDirectory', () => {
     dir.dispose()
   })
 
-  it('unsubscribes the mirror on dispose and stops refreshing', async () => {
+  it('stops mirror-driven updates after dispose', async () => {
     const mirrorFace = mirror({
       status: 'ready', view: {
         writable: true, hasDocument: true, namespaces: [
@@ -176,14 +160,12 @@ describe('ModelVisibilityDirectory', () => {
         ],
       }, error: null,
     })
-    const onChange = vi.fn()
-    const providers = vi.fn().mockResolvedValue([PROVIDER])
-    const dir = new ModelVisibilityDirectory(providers, mirrorFace.face, onChange)
+    const dir = new ModelVisibilityDirectory(() => Promise.resolve([PROVIDER]), mirrorFace.face)
     await dir.refresh()
-    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(dir.store.getSnapshot().hidden.size).toBe(1)
 
     dir.dispose()
-    // A later mirror change must not reach a disposed directory.
+    // A later mirror change must not update a disposed directory.
     mirrorFace.store.set({
       status: 'ready', error: null, view: {
         writable: true, hasDocument: true, namespaces: [
@@ -193,6 +175,6 @@ describe('ModelVisibilityDirectory', () => {
         ],
       },
     })
-    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(dir.store.getSnapshot().hidden.get('deepseek-official')).toEqual(new Set(['flash']))
   })
 })

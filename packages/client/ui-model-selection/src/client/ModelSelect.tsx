@@ -21,7 +21,9 @@ import {
   IconCheckOutline16, IconChevronDownOutline14, IconChevronRightOutline14,
   IconWarningOutline16, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ModelVisibilityState } from './visibility.ts'
 import type { ModelSelectInjected } from './slots.ts'
 import css from './ModelSelect.module.css'
 
@@ -35,6 +37,14 @@ interface EffortChoice {
   label: string
 }
 
+/** Shared empty set for "this provider hides nothing" lookups. */
+const EMPTY_SET: ReadonlySet<string> = new Set()
+
+/** Empty visibility store: a render without an injected visibility hides nothing. */
+const EMPTY_VISIBILITY = createSnapshotStore<ModelVisibilityState>({
+  status: 'ready', error: null, hidden: new Map(),
+})
+
 /**
  * Render the composer model seat.
  * @param props - owner share (locked) + injected face (shared directory
@@ -42,12 +52,18 @@ interface EffortChoice {
  * @returns the trigger and, while open, the two-level menu.
  */
 export function ModelSelect(
-  { locked, available, directory, load, select, t }:
+  { locked, available, directory, visibility, load, select, t }:
   ModelSelectInjected & { locked: boolean } & PropsLocale<'model'>,
 ) {
   const state = useSyncExternalStore(
     fn => directory.subscribe(fn),
     () => directory.getSnapshot(),
+  )
+  // The visibility snapshot (hidden model ids per provider); empty while the
+  // settings scene is absent, so hiding only ever reflects a real configuration.
+  const visibilityState = useSyncExternalStore(
+    fn => visibility?.subscribe(fn) ?? EMPTY_VISIBILITY.subscribe(fn),
+    () => (visibility ?? EMPTY_VISIBILITY).getSnapshot(),
   )
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>('root')
@@ -326,16 +342,27 @@ export function ModelSelect(
                 <div className={css.modelColumn}>
                   {(() => {
                     const activeGroupState = state.groups.find(group => group.id === activeGroup)
-                    // One empty message serves both an unpublished active
-                    // provider and one whose models did not load.
-                    const empty = state.status === 'ready'
-                      && (activeGroupState === undefined || activeGroupState.models.length === 0)
+                    if (activeGroupState === undefined) {
+                      return state.status === 'ready'
+                        ? <div className={css.empty}>{t('empty.models')}</div>
+                        : null
+                    }
+                    const hiddenModels = visibilityState.hidden.get(activeGroupState.id) ?? EMPTY_SET
+                    // Visible = every advertised model except those hidden and
+                    // not the current selection. The empty message follows the
+                    // FILTERED count, so a provider whose models are all hidden
+                    // (and none is the current selection) shows it too.
+                    const visibleModels = activeGroupState.models.filter((model) => {
+                      const selected = state.current?.provider === activeGroupState.id
+                        && state.current.model === model.id
+                      return !hiddenModels.has(model.id) || selected
+                    })
+                    const empty = state.status === 'ready' && visibleModels.length === 0
                       ? <div className={css.empty}>{t('empty.models')}</div>
                       : null
-                    if (activeGroupState === undefined) return empty
                     return (
                       <div id={`${id}-models-${activeGroupState.id}`} role="group" aria-label={activeGroupState.name}>
-                        {activeGroupState.models.map((model) => {
+                        {visibleModels.map((model) => {
                           const selected = state.current?.provider === activeGroupState.id
                             && state.current.model === model.id
                           return (

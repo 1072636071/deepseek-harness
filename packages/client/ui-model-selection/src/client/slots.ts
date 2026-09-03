@@ -7,6 +7,7 @@
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ModelDirectoryState } from './directory.ts'
+import type { ModelVisibilityState } from './visibility.ts'
 
 /** Injected business face of the composer model seat. */
 export interface ModelSelectInjected {
@@ -14,6 +15,8 @@ export interface ModelSelectInjected {
   available: boolean
   /** The session's shared directory store (same instance the /model popup reads). */
   directory: SnapshotStore<ModelDirectoryState>
+  /** The shared provider model-visibility store (settings-derived hidden set). */
+  visibility?: SnapshotStore<ModelVisibilityState> | undefined
   /** Ensure the shared advisory catalog is loaded (errors land on the store). */
   load: () => void
   /**

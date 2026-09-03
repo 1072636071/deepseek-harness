@@ -167,6 +167,9 @@ export function apply(ctx: ClientContext): void {
         return {
           available,
           directory: directory.store,
+          // A config without the settings scene has no visibility directory;
+          // the seat renders an empty set and keeps every model selectable.
+          visibility: models.modelVisibility?.store,
           load: () => {
             if (available) directory.load().catch(() => { /* surfaced on the store */ })
           },

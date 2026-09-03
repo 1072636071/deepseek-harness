@@ -105,7 +105,6 @@ export class ModelVisibilityDirectory {
 
   private readonly unsubscribeMirror: () => void
   private readonly loadProviders: () => Promise<readonly LlmConfigurableProvider[]>
-  private readonly onChange: () => void
   private providers: readonly LlmConfigurableProvider[] = []
   private generation = 0
   private disposed = false
@@ -113,17 +112,13 @@ export class ModelVisibilityDirectory {
   /**
    * @param loadProviders - fetches the Host configurable-provider directory.
    * @param describe - the settings describe face (shared mirror snapshot).
-   * @param onChange - a callback when the derived hidden set changes, so the
-   * caller can trigger a catalog-aware refresh.
    */
   constructor(
     loadProviders: () => Promise<readonly LlmConfigurableProvider[]>,
     private readonly describe: SettingsDescribeFace,
-    onChange: () => void,
   ) {
     this.loadProviders = loadProviders
-    this.onChange = onChange
-    this.unsubscribeMirror = describe.subscribe(() => { if (this.derive()) onChange() })
+    this.unsubscribeMirror = describe.subscribe(() => { this.derive() })
     this.derive()
     void this.refresh()
   }
@@ -140,7 +135,7 @@ export class ModelVisibilityDirectory {
       const providers = await this.loadProviders()
       if (this.disposed || generation !== this.generation) return
       this.providers = providers
-      if (this.derive()) this.onChange()
+      this.derive()
     } catch (error) {
       if (this.disposed || generation !== this.generation) return
       this.store.set({
@@ -152,23 +147,20 @@ export class ModelVisibilityDirectory {
   }
 
   /**
-   * Re-derive the hidden set from the current sources, notifying listeners
-   * exactly when it changes.
-   * @returns whether the published hidden set changed.
+   * Re-derive the hidden set from the current sources, republishing when it
+   * changes so subscribers see fresh visibility without a pull.
    */
-  private derive(): boolean {
-    if (this.disposed) return false
+  private derive(): void {
+    if (this.disposed) return
     const snapshot = this.describe.getSnapshot()
-    const previous = this.store.getSnapshot().hidden
     if (snapshot.view === undefined) {
       // No answer yet: stay in the initial loading posture until the mirror
       // either resolves or reports a definite failure. A failure is published
       // as an error so the caller can distinguish it from an unreadied read.
       if (snapshot.error !== null) {
         this.store.set({ status: 'error', error: snapshot.error, hidden: new Map() })
-        return previous.size !== 0
       }
-      return false
+      return
     }
     const derived = new Map<string, ReadonlySet<string>>()
     for (const entry of joinVisibilityDirectory(this.providers, this.describe)) {
@@ -176,7 +168,6 @@ export class ModelVisibilityDirectory {
       if (ids.size > 0) derived.set(entry.provider, ids)
     }
     this.store.set({ status: 'ready', error: null, hidden: derived })
-    return !hiddenSetsEqual(previous, derived)
   }
 
   /** Scope teardown: stop deriving from the mirror and fetching providers. */
@@ -185,18 +176,4 @@ export class ModelVisibilityDirectory {
     this.generation += 1
     this.unsubscribeMirror()
   }
-}
-
-/** Whether two hidden-model key sets carry the same provider→ids relation. */
-function hiddenSetsEqual(
-  a: ReadonlyMap<string, ReadonlySet<string>>,
-  b: ReadonlyMap<string, ReadonlySet<string>>,
-): boolean {
-  if (a.size !== b.size) return false
-  for (const [provider, ids] of a) {
-    const other = b.get(provider)
-    if (other === undefined || other.size !== ids.size) return false
-    for (const id of ids) if (!other.has(id)) return false
-  }
-  return true
 }

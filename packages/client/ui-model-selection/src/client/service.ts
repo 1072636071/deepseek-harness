@@ -71,14 +71,16 @@ export class ModelDirectoryResolver extends Service {
     this.blockReason = config.blockReason
     this.catalog = new ModelCatalogDirectory(ctx.remote.session)
     // The visibility directory derives the settings-hidden set from the
-    // configurable-provider directory and the settings mirror; a change in
-    // either refreshes the catalog so hiding reflects on the next render.
+    // configurable-provider directory and the settings mirror, publishing it
+    // on its own store. Consumers (the composer seat) subscribe to that store
+    // directly, so a hidden-set change needs no catalog reload: the catalog
+    // carries no visibility, and provider-directory changes already refresh
+    // the catalog through their own forwarding events.
     this.visibility = new ModelVisibilityDirectory(
       () => ctx.remote.llm.listConfigurableProviders().then(
         response => response.ok ? response.value : Promise.reject(new Error(response.error.message)),
       ),
       ctx.settingsScope.describe(),
-      () => { this.catalog.refresh() },
     )
     // Unsubscribe the mirror and stop refresh once this service's fiber goes:
     // the visibility directory owns no independent teardown site.
