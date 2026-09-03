@@ -17,15 +17,9 @@ import {
   type ToolKind,
 } from '@agentclientprotocol/sdk'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { SessionId } from '@deepseek-ai/dsh-session'
-import {
-  AssistantOutputFold,
-  disposeProviderChild,
-  ProviderRunFailure,
-  providerFailureDiagnostic,
-  settleRunResult,
-  subprocessRunHandle,
-} from '@deepseek-ai/dsh-subagent'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session'
+import { AssistantOutputFold, settleRunResult, subprocessRunHandle } from '@deepseek-ai/dsh-subagent'
 import type { SubagentResult, SubagentRun, SubagentStartRequest, SubagentStopReason } from '@deepseek-ai/dsh-subagent'
 import type { SubprocessHandle, SubprocessOutcome, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 
@@ -85,7 +79,11 @@ export interface AcpRunSpec {
   onError?: (error: Error, stopReason: SubagentStopReason) => void
 }
 
-export { DEFAULT_DISPOSE_EOF_GRACE_MS, DEFAULT_DISPOSE_GRACE_MS } from '@deepseek-ai/dsh-subagent'
+/** EOF grace for child flush and nested-process teardown; wider than the signal grace below. */
+export const DEFAULT_DISPOSE_EOF_GRACE_MS = 6_000
+
+/** Default POSIX grace between SIGTERM and SIGKILL on dispose (the `disposeGraceMs` config). */
+export const DEFAULT_DISPOSE_GRACE_MS = 3_000
 
 type AcpFailureStage = 'initialize' | 'new-session' | 'prompt' | 'process' | 'teardown'
 
@@ -118,17 +116,20 @@ const ACP_TOOL_KINDS: ReadonlySet<string> = new Set([
 
 /** Fixed safe failure text derived only from provider-owned structured facts. */
 function failureDiagnostic(facts: AcpFailureFacts): string {
-  return providerFailureDiagnostic({
-    label: 'Subagent failure',
-    subject: 'provider: ACP',
-    fields: [
-      ['stage', facts.stage],
-      ['category', facts.category],
-      ['stop reason', facts.stopReason],
-      ['exit code', facts.outcome?.exitCode],
-      ['signal', facts.outcome?.signal],
-    ],
-  })
+  const fields = [
+    'provider: ACP',
+    `stage: ${facts.stage}`,
+    `category: ${facts.category}`,
+  ]
+  if (facts.stopReason !== undefined) fields.push(`stop reason: ${facts.stopReason}`)
+  if (facts.outcome?.exitCode !== null && facts.outcome?.exitCode !== undefined) {
+    fields.push(`exit code: ${facts.outcome.exitCode}`)
+  }
+  /* v8 ignore next -- Windows does not report POSIX child signals in SubprocessOutcome. */
+  if (facts.outcome?.signal !== null && facts.outcome?.signal !== undefined) {
+    fields.push(`signal: ${facts.outcome.signal}`)
+  }
+  return `Subagent failure (${fields.join('; ')})`
 }
 
 /** Fixed permission fact; ACP tool titles and option text never enter it. */
@@ -142,9 +143,13 @@ function diagnosticText(facts: AcpFailureFacts, permission?: AcpPermissionDecisi
   return permission === undefined ? failure : `${failure}\n${permissionDiagnostic(permission)}`
 }
 
-class AcpRunFailure extends ProviderRunFailure<AcpFailureFacts> {
+class AcpRunFailure extends Error {
   constructor(facts: AcpFailureFacts, cause: unknown) {
-    super('subagent-acp', facts, failureDiagnostic(facts), cause)
+    super(
+      `subagent-acp: ${failureDiagnostic(facts)}`,
+      { cause },
+    )
+    this.name = 'AcpRunFailure'
   }
 }
 
@@ -165,16 +170,39 @@ function permissionRequestKind(kind: ToolKind | null | undefined): ToolKind | 'u
     : 'unknown'
 }
 
+/** Bounded whole-tree exit wait: polls the handle's tree liveness until it exits or `ms` elapses. */
+async function treeExitsWithin(child: SubprocessHandle, ms: number): Promise<boolean> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => { controller.abort() }, ms)
+  try {
+    return await child.waitForExit(controller.signal)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
- * Cooperative teardown ladder for the ACP child over the shared provider
- * skeleton: stdin EOF (the child's window to flush persistence and reap its
- * own descendants), then the terminate() escalation and its whole-tree exit
- * proof.
+ * Cooperative teardown ladder for an out-of-process agent, over the seam's
+ * public verbs; resolves only at whole-tree quiescence: stdin EOF (the child's
+ * window to flush persistence and reap its own descendants), then the
+ * terminate() escalation (SIGTERM → spec grace → SIGKILL) and its
+ * whole-tree exit proof.
  * @param child - the spawned ACP child's handle.
  * @param eofGraceMs - tier-1 window after stdin EOF.
  */
 export async function disposeAcpChild(child: SubprocessHandle, eofGraceMs: number): Promise<void> {
-  await disposeProviderChild(child, { endStdin: true, eofGraceMs })
+  // A spawn failure has no process to tear down; observe the rejection so
+  // disposal in a finally block cannot surface it as unhandled.
+  if (child.pid <= 0) {
+    await child.done.catch(() => {})
+    return
+  }
+  child.stdin?.end()
+  if (await treeExitsWithin(child, eofGraceMs)) return
+  // terminate() owns the bounded SIGTERM→SIGKILL timer. Its unbounded wait is
+  // the process owner's exit proof, not a second derived grace that can overflow.
+  child.terminate()
+  await child.waitForExit()
 }
 
 /**
@@ -308,7 +336,7 @@ export async function startAcpRun(request: SubagentStartRequest, spec: AcpRunSpe
   // ACP session ids are unique only within the child server. The lifecycle id
   // is minted in the parent namespace so fresh processes cannot collide with
   // each other or with a local agent that happens to use the same session id.
-  const id = SessionId(randomUUID())
+  const id = brandString<SessionId>(randomUUID())
 
   // Keep diagnostics on parent stderr ('inherit'); only ACP output contributes
   // to the result. The seam's scrub drops ambient credentials and DSH_* names

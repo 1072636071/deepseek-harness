@@ -6,103 +6,26 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { ScopedLayers, scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
-import type { ScopeKey } from '@deepseek-ai/dsh-scope'
-import { assertNever, deepFreeze, type ContentBlock, type ToolSchema } from '@deepseek-ai/dsh-llm'
-import { snapshotJsonValue, type JsonValue, type UserMessage } from '@deepseek-ai/dsh-session'
-import { FIRST_PARTY_SECTION_ORDER, type ToolProviderResult } from '@deepseek-ai/dsh-system-prompt'
+import { AnonymousEntries, NamedEntries, ScopedLayers, scopeOf, scopeTarget } from '@deepseek-ai/dsh-scope'
+import type { ScopeKey, ScopeLayer, Scoped } from '@deepseek-ai/dsh-scope'
+import type { ToolCallId, ContentBlock, ToolSchema } from '@deepseek-ai/dsh-llm'
+import { HarnessError } from '@deepseek-ai/dsh-llm'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { UserMessage } from '@deepseek-ai/dsh-session'
+import { assertNever, deepFreeze, snapshotJsonValue, type JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { ToolProviderResult } from '@deepseek-ai/dsh-system-prompt'
 import type { CodeRuntime } from '@deepseek-ai/dsh-code-runtime'
 // Type-only: makes `ctx.get('approval')` resolve to the ApprovalService
 // augmentation. The seam stays optional at runtime — see `serviceAsk`.
 import type {} from '@deepseek-ai/dsh-user-approval'
+import type { ToolCallView, ToolResultView } from './presentation.ts'
 import { assertSupportedJsonSchema, validateJsonSchemaValue } from './json-schema.ts'
-import { createRunCodeTool, RUN_CODE_NAME, SDK_SECTION_ORDER } from './ptc.ts'
+import type { JsonSchemaNode } from './json-schema.ts'
+import { createRunCodeTool, RUN_CODE_NAME } from './ptc.ts'
 import type { CodeSdkLanguage } from './ptc.ts'
 import { renderToolsSdk } from './ts-types.ts'
 import type { ToolSdkSchema } from './ts-types.ts'
 import { renderToolsSdkPy } from './py-types.ts'
-
-// Split-module surface: types, pure helpers, and the scheduler contract live in
-// their own modules; this file keeps the ToolRuntime service (composition root)
-// and the registry/dispatch wiring. The augmentation import below installs the
-// Cordis `tools/*` event surface.
-import './events.ts'
-import { ToolLayer, resolveMaxParallelSubCalls } from './layer.ts'
-import { executionStateOf, registerExecutionState } from './execution-state.ts'
-import type { ToolExecutionState } from './execution-state.ts'
-import { createExecutionToken } from './definition.ts'
-import type {
-  CompiledToolRestriction,
-  MutableToolRunContext,
-  PtcDispatchLog,
-  ToolDefinition,
-  ToolExecution,
-  ToolExecutionInput,
-  ToolExecutionMode,
-  ToolExecutionToken,
-  ToolGuard,
-  ToolRestriction,
-  ToolRunContext,
-} from './definition.ts'
-import {
-  ToolNotFoundError,
-  ToolOutputError,
-  errorMessage,
-  failureMessageFromContent,
-  materializePresentation,
-  projectionError,
-  snapshotProjection,
-  snapshotToolValue,
-  toolAbortedBeforeDispatchResult,
-  toolAbortedResult,
-  toolErrorResult,
-} from './results.ts'
-import type {
-  PostToolDecision,
-  PreToolDecision,
-  ToolExecutionResult,
-  ToolExecutionSuccess,
-} from './results.ts'
-import { fuseToolSignals, isAborted } from './signals.ts'
-import { TOOL_RUNTIME_SCHEDULER } from './scheduler.ts'
-import type { ScheduledToolDispatch, ScheduledToolPreparation, ToolRuntimeScheduler } from './scheduler.ts'
-import type { Config, ToolPresentationMode } from './config.ts'
-
-// Public API re-exports: the split modules own the declarations, this package
-// root stays the single public entry point for tool producers and UI adapters.
-export {
-  TOOL_ABORTED,
-  TOOL_ABORTED_BEFORE_DISPATCH,
-  ToolNotFoundError,
-  ToolOutputError,
-} from './results.ts'
-export type {
-  PostToolDecision,
-  PreToolDecision,
-  ToolErrorInfo,
-  ToolExecutionFailure,
-  ToolExecutionResult,
-  ToolExecutionSuccess,
-  ToolFailure,
-} from './results.ts'
-export type {
-  MutableToolRunContext,
-  PtcDispatchLog,
-  ToolDefinition,
-  ToolDispatchExecution,
-  ToolExecution,
-  ToolExecutionInput,
-  ToolExecutionMode,
-  ToolExecutionToken,
-  ToolGuard,
-  ToolOutputDefinition,
-  ToolRestriction,
-  ToolResult,
-  ToolRunContext,
-} from './definition.ts'
-export { TOOL_RUNTIME_SCHEDULER } from './scheduler.ts'
-export type { ScheduledToolDispatch, ScheduledToolPreparation, ToolRuntimeScheduler } from './scheduler.ts'
-export type { Config, ToolPresentationMode } from './config.ts'
 
 /**
  * Language → SDK-section renderer. The registry looks up the loaded
@@ -120,13 +43,6 @@ export type { Config, ToolPresentationMode } from './config.ts'
  * with its zh pair, plus this package's own README pair and the
  * {@link Config.mode} JSDoc.
  */
-/**
- * Prompt order of the `ptc` collapse statement: after the persona and before
- * per-tool guidance, so the model reads which tools it may call before it
- * reads what each one is for.
- */
-const COLLAPSE_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.PTC_ONLY
-
 /**
  * The model-facing statement of the `ptc` collapse. Names the consequence
  * (the call fails) and the route (inside the program), because a rule the
@@ -175,7 +91,6 @@ export {
   type JsonSchemaScalar,
 } from './json-schema.ts'
 
-export type { JsonValue } from '@deepseek-ai/dsh-session'
 export type { PtcDispatchEventData, PtcDispatchStartEventData } from './types.ts'
 
 export { CodeRunFailedError, RUN_CODE_NAME } from './ptc.ts'
@@ -211,6 +126,562 @@ export type {
   WebSource,
 } from './presentation.ts'
 
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    tools: ToolRuntime
+  }
+
+  interface Events {
+    /**
+     * Allow, deny, or ask before dispatch. `next()` delegates to allow; missing
+     * approval support turns `ask` into denial. Async gates must observe
+     * `exec.signal`; the registry rechecks cancellation after they settle but
+     * never abandons their promise.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's calls.
+     * @param exec - the pending call (name, parsed arguments, caller agent).
+     * @mode waterfall
+     */
+    'tools/pre-execute'(this: Scoped<ToolRuntime>, exec: ToolExecution, next: () => Promise<PreToolDecision>): Promise<PreToolDecision>
+    /**
+     * Around-dispatch waterfall for timeout, retry, or metrics. `next()` returns
+     * a normalized result; wrappers may change only `exec.signal`, while call
+     * identity remains immutable. The registry re-fuses the original caller
+     * signal before the body, so replacement cannot detach caller cancellation;
+     * wrappers must still restore their signal and reach quiescence.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's calls.
+     * @param exec - the allowed call about to dispatch (name, parsed arguments, caller agent, signal).
+     * @mode waterfall
+     */
+    'tools/execute'(this: Scoped<ToolRuntime>, exec: ToolDispatchExecution, next: () => Promise<ToolExecutionResult>): Promise<ToolExecutionResult>
+    /**
+     * Accept, replace, enrich, or block a normalized dispatch result. `next()`
+     * accepts it unchanged; thrown tools still reach this waterfall as errors. Async
+     * listeners must observe `exec.signal`; after they settle, caller
+     * cancellation replaces only a successful accepted outcome with the code
+     * selected by whether the tool body was invoked.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's calls.
+     * @param exec - the call that just ran (name, parsed arguments, caller agent).
+     * @param result - the dispatch outcome a listener may accept, replace, or block.
+     * @mode waterfall
+     */
+    'tools/post-execute'(this: Scoped<ToolRuntime>, exec: ToolExecution, result: Readonly<ToolExecutionResult>, next: () => Promise<PostToolDecision>): Promise<PostToolDecision>
+    /**
+     * Allow a listener to replace content in the DURABLE LOG COPY of one
+     * `run_code` sub-dispatch outcome before the bridge appends its
+     * `tool/code-dispatch` event. `next()` keeps the
+     * content unchanged; a listener may return replacement blocks (e.g. the
+     * spill policy's preview + locator for an oversized text result). Only the
+     * logged copy is affected — the program already received the complete
+     * value, and the model sees neither. A throwing listener is contained:
+     * the bridge falls back to logging the original settled content.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent's dispatches.
+     * @param dispatch - the parent execution, sub-call identity, and the settled content to log.
+     * @mode waterfall
+     */
+    'tools/ptc-dispatch-log'(this: Scoped<ToolRuntime>, dispatch: PtcDispatchLog, next: () => Promise<ContentBlock[]>): Promise<ContentBlock[]>
+    /**
+     * Observe the frozen, lossless-JSON final outcome. Listener failures are contained.
+     * Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): keyed by `exec.agent`.
+     * @param exec - the execution object that traversed the pipeline.
+     * @param result - a deep-frozen snapshot of the final returned result.
+     * @mode emit
+     */
+    'tools/result'(this: Scoped<ToolRuntime>, exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): undefined
+    /**
+     * A tool was registered or unregistered, or a scoped restriction changed
+     * (the available tool set changed — possibly for one scope only). An
+     * UNFILTERED registry-subject notification, deliberately not scope-filtered
+     * dispatch: a global change concerns every agent's next assembly, so a
+     * scoped listener subscribing here sees every change, not just its own
+     * scope's.
+     * @mode emit
+     */
+    'tools/change'(): void
+  }
+}
+
+/** Tool-owned canonical output contract used after the body returns a JSON value. */
+export interface ToolOutputDefinition {
+  /** Raw supported JSON Schema enforced against every successful canonical value. */
+  readonly schema: JsonSchemaNode
+  /** Pure projection from validated arguments and value to Native/model content. */
+  render(args: unknown, value: JsonValue): ContentBlock[]
+  /** Pure replayable presentation projection, computed only for top-level calls. */
+  presentationMeta?(args: unknown, value: JsonValue): JsonValue
+}
+
+/** A registered tool: its schema plus the execution function. */
+export interface ToolDefinition extends ToolSchema {
+  /** Mandatory canonical output declaration. */
+  readonly output: ToolOutputDefinition
+  /**
+   * Run one accepted call and return only its canonical lossless-JSON value.
+   * Async work must observe or forward `exec.signal` and settle only after its
+   * owned work reaches quiescence. The registry preserves caller cancellation
+   * through around-dispatch signal replacement and does not abandon this
+   * promise, but it cannot hard-kill same-process code.
+   * @param args - losslessly snapshotted, frozen model arguments.
+   * @param exec - execution identity, cancellation signal, and context deferral.
+   * @returns the canonical value declared by `output.schema`.
+   */
+  execute(args: unknown, exec: ToolRunContext): Promise<unknown>
+  /**
+   * Synchronous last-mile transform for model-facing content. The registry
+   * snapshots this callback when execution starts and invokes it exactly once
+   * for every normalized outcome, including pipeline failures that bypass
+   * `tools/post-execute`, immediately before lossless materialization.
+   * Returning `undefined` preserves the content; every other result field
+   * remains registry-owned. The callback must be total and must not throw.
+   * @param exec - immutable execution identity and arguments.
+   * @param result - complete normalized outcome before materialization.
+   * @returns replacement content, or `undefined` to preserve it.
+   */
+  finalizeContent?(exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>): ContentBlock[] | undefined
+  /**
+   * Cooperative tool-call timeout budget in milliseconds. Omit for no deadline.
+   * Enforced by `@deepseek-ai/dsh-tool-call-timeout-policy` (a `tools/execute` wrapper); it
+   * is NEVER sent to the model — `schemas()` whitelists only name/description/
+   * parameters. Declaring it asserts this tool forwards `exec.signal` to a
+   * cooperative implementation that can reach quiescence when the signal aborts.
+   */
+  timeoutMs?: number
+  /**
+   * Pure synchronous classifier for overlap with sibling tool calls. Only
+   * `true` opts in; omission, exceptions, non-`true` returns, and invalid
+   * `defineTool` arguments are exclusive. This metadata is never model-visible.
+   *
+   * Opted-in executions must not mutate parent-owned state. Shared state must
+   * tolerate concurrent dispatch; recorder races are permitted only when they
+   * commute or fail closed. See the
+   * [parallel-tool-call Agent Note](../../../../.agents/notes/implemented/feature/2026-07-10-parallel-tool-call-execution.md)
+   * for the full contract.
+   * @param args - parsed arguments; `defineTool` validates before calling.
+   * @returns Whether this call may join a parallel group.
+   */
+  isConcurrencySafe?(args: unknown): boolean
+  /**
+   * Optional: how to present the PENDING state of one call in a UI, derived from
+   * the call's `args` (parsed arguments, `unknown` — the tool validates/narrows
+   * its own input). Returns a {@link ToolCallView} (a `card`-tagged render intent),
+   * or `undefined` (or omit the method) to fall back to a generic presentation
+   * (title = tool name, raw args as input). Pure and side-effect-free: a UI may
+   * call it during live streaming AND a session-log replay, so it must depend
+   * only on `args`.
+   */
+  presentCall?(args: unknown): ToolCallView | undefined
+  /**
+   * Optional: how to present the COMPLETED state, given the same `args` and the
+   * durable result projection (`content`, failure state, and optional `meta`). Returns a
+   * {@link ToolResultView}, or `undefined` (or omit the method) to keep the
+   * pending title and render the raw result content. Pure and side-effect-free
+   * for the same replay reason.
+   */
+  presentResult?(args: unknown, result: ToolResult): ToolResultView | undefined
+}
+
+/** The completed outcome handed to {@link ToolDefinition.presentResult}. */
+export interface ToolResult {
+  /** The final model-facing content (or the rendered error text on failure). */
+  content: ContentBlock[]
+  /** Whether the call failed. */
+  isError: boolean
+  /**
+   * The tool-private presentation payload projected by its output declaration.
+   * It is persisted verbatim on `tool/result` for Host presenters and Client
+   * renderers to narrow independently. Absent when the tool declared no
+   * projector or the call was nested under a composite transport.
+   */
+  meta?: JsonValue
+}
+
+declare const toolExecutionTokenBrand: unique symbol
+
+/** Opaque call identity that permits correlation without exposing mutable execution state. */
+export type ToolExecutionToken = symbol & { readonly [toolExecutionTokenBrand]: true }
+
+/**
+ * Caller-supplied description of one tool call. {@link ToolRuntime.execute}
+ * adds the registry-owned token to form a pipeline {@link ToolExecution};
+ * callers do not choose that token.
+ */
+export interface ToolExecutionInput {
+  readonly callId: ToolCallId
+  /**
+   * Root model-requested call owning this execution tree. Callers omit it for
+   * a root execution; nested dispatchers propagate the enclosing value.
+   */
+  readonly rootCallId?: ToolCallId
+  readonly name: string
+  /** Losslessly JSON-serializable parsed arguments (tools validate their own schema). */
+  readonly arguments: unknown
+  /** The agent on whose behalf the call runs (set by the agent loop). */
+  readonly agent?: Agent
+  /**
+   * Opaque token of the enclosing transport execution, when one exists. PTC
+   * mode sets this on SDK sub-dispatches so commit-style observers can wait for
+   * the outer `run_code` outcome without receiving its live mutable execution.
+   * The token also marks the call as a transport sub-dispatch rather than a
+   * model-direct call: under `mode: 'ptc'`, only calls WITH a parent may
+   * execute a native tool name — a model-direct call (no parent) is denied as
+   * `UNKNOWN_TOOL` before the policy pipeline. See {@link ToolRuntime.execute}.
+   */
+  readonly parent?: ToolExecutionToken
+  /** Required caller-owned cancellation for this invocation. */
+  readonly signal: AbortSignal
+}
+
+/**
+ * Scheduling mode for one pending call. `parallel` may overlap with siblings;
+ * `exclusive` runs alone and forms an ordering barrier.
+ */
+export type ToolExecutionMode =
+  | { kind: 'parallel' }
+  | { kind: 'exclusive' }
+
+/**
+ * One settled `run_code` sub-dispatch about to be logged, as seen by the
+ * `tools/ptc-dispatch-log` waterfall: the parent execution (session owner,
+ * outer call identity), the sub-call identity, and the outcome whose durable
+ * copy a listener may reshape. `content` is the RENDERED result projection
+ * (what a native `tool/result` would carry) — the program itself received
+ * the structured `value` (or just the error message on failure); only the
+ * `tool/code-dispatch` event's copy changes.
+ */
+export interface PtcDispatchLog {
+  /** The outer `run_code` execution. */
+  readonly exec: ToolExecution
+  /** The calling agent (the scope routing key and the spill owner), when the outer call has one. */
+  readonly agent?: Agent
+  /** Deterministic sub-call id (`<parent>:code:<n>`). */
+  readonly subCallId: ToolCallId
+  /** The dispatched sub-tool name. */
+  readonly name: string
+  /** Whether the sub-call settled as an error. */
+  readonly isError: boolean
+  /** The sub-call's complete model-facing content (the settle event's default payload). */
+  readonly content: ContentBlock[]
+}
+
+/**
+ * One pending tool call inside the registry pipeline. Parsed arguments cross
+ * one lossless-JSON materialization boundary before policy and are deep-frozen;
+ * call identity, the caller signal, and the registry-assigned {@link token} are
+ * readonly. The registry freezes the complete object before `tools/result`
+ * observers run.
+ */
+export interface ToolExecution extends ToolExecutionInput {
+  /** Root model-requested call, resolved for every root and nested execution. */
+  readonly rootCallId: ToolCallId
+  /** Registry-assigned identity shared with nested calls only as their opaque `parent` token. */
+  readonly token: ToolExecutionToken
+}
+
+/**
+ * Around-dispatch view of a {@link ToolExecution}. A `tools/execute` wrapper
+ * may replace the signal for its delegated lifetime, but it cannot remove it.
+ * The registry fuses every replacement with the captured caller signal.
+ */
+export interface ToolDispatchExecution extends Omit<ToolExecution, 'signal'> {
+  /** Cancellation signal visible to the next wrapper or tool body. */
+  signal: AbortSignal
+}
+
+/**
+ * Runtime context handed to a tool implementation after the registry has
+ * accepted a {@link ToolExecution}. {@link deferContext} attaches context to
+ * this execution's own result — a composite tool ferries nested-dispatch
+ * context back to the outer result, and a leaf tool may mint a fresh
+ * plugin-sourced instruction; the loop appends it only after the
+ * `tool/result`.
+ */
+export interface ToolRunContext extends ToolExecution {
+  /**
+   * Defer one context — typically a nested-dispatch context ferried by a
+   * composite tool, or a fresh plugin-sourced instruction — until this tool's
+   * final result reaches the agent loop. Contexts retain their individual
+   * source and metadata and are emitted in call order.
+   */
+  deferContext(context: UserMessage): void
+  /**
+   * Mark a successful final result as terminal for the current agent turn.
+   * The marker rides this execution's own result (`concludesTurn` exists only
+   * on {@link ToolExecutionSuccess}); a composite that dispatches nested
+   * calls forwards it from the nested result, exactly like
+   * `additionalContexts`, so only an authoritative nested success can
+   * conclude the enclosing run.
+   */
+  concludeTurn(): void
+}
+
+/** Registry-owned live execution object; public pipeline views stay readonly. */
+type MutableToolRunContext = Omit<ToolRunContext, 'signal'> & { signal: AbortSignal }
+
+/**
+ * Scheduler-only result after ordered pre-execute and guards. A `post-result`
+ * still receives post-execute; a `final-result` bypasses it.
+ * @internal
+ */
+export type ScheduledToolPreparation =
+  | { kind: 'dispatch'; exec: ToolRunContext }
+  | { kind: 'post-result'; exec: ToolRunContext; result: ToolExecutionResult }
+  | { kind: 'final-result'; exec: ToolRunContext; result: ToolExecutionResult }
+
+/**
+ * Scheduler-only dispatch result. A `post-result` still receives post-execute;
+ * a `final-result` already matches {@link ToolRuntime.execute} failure semantics.
+ * @internal
+ */
+export type ScheduledToolDispatch =
+  | { kind: 'post-result'; result: ToolExecutionResult }
+  | { kind: 'final-result'; result: ToolExecutionResult }
+
+/**
+ * Symbol-keyed scheduler view that keeps pre/post policy ordered while
+ * overlapping dispatch. Ordinary callers use {@link ToolRuntime.execute};
+ * this is not a plugin extension point.
+ * @internal
+ */
+export interface ToolRuntimeScheduler {
+  /** Materialize input, run the ordered pre-execute/guard gate, and decide what stage follows. */
+  prepare(exec: ToolExecutionInput): Promise<ScheduledToolPreparation>
+  /** Run only the around-dispatch/body stage. */
+  dispatch(exec: ToolRunContext): Promise<ScheduledToolDispatch>
+  /** Run post-execute and definition-owned content finalization, then materialize and notify. */
+  finalize(exec: ToolRunContext, result: ToolExecutionResult): Promise<ToolExecutionResult>
+  /** Run definition-owned content finalization, then materialize and notify without post-execute. */
+  finish(exec: ToolRunContext, result: ToolExecutionResult): ToolExecutionResult
+}
+
+/**
+ * Scheduler entry point omitted from the generated named service API.
+ * @internal
+ */
+export const TOOL_RUNTIME_SCHEDULER: unique symbol = Symbol('@deepseek-ai/dsh-tools.scheduler')
+
+/** Canonical error code for cancellation after a tool body was invoked. */
+export const TOOL_ABORTED = 'ABORTED'
+
+/** Canonical error code for cancellation before a tool body was invoked. */
+export const TOOL_ABORTED_BEFORE_DISPATCH = 'ABORTED_BEFORE_DISPATCH'
+
+/** Structured error metadata for a failed tool call (alongside the model-facing text). */
+export interface ToolErrorInfo {
+  name: string
+  code: string
+}
+
+/** Canonical failure detail; internal routing information remains optional. */
+export interface ToolFailure {
+  /** Human-readable failure message without the Native `Error: ` envelope. */
+  message: string
+  /** Internal error class/code used by policy and durable diagnostics. */
+  info?: ToolErrorInfo
+}
+
+/**
+ * Thrown (internally) when the model requests a tool that isn't registered.
+ * Extends {@link HarnessError} (`code: 'UNKNOWN_TOOL'`) so an unknown-tool
+ * failure is as routable as a tool-thrown one — retry/sandbox/replay code can
+ * distinguish it from a tool body's own error.
+ */
+export class ToolNotFoundError extends HarnessError {
+  /**
+   * @param toolName - the name the caller asked for.
+   * @param reachableFrom - how the model reaches this tool instead, when the
+   *   name IS visible and only the presentation denies calling it directly.
+   *   Omitted for a name that is registered nowhere.
+   */
+  constructor(toolName: string, reachableFrom?: string) {
+    super(
+      reachableFrom === undefined
+        ? `unknown tool "${toolName}"`
+        : `unknown tool "${toolName}": ${reachableFrom}`,
+      'UNKNOWN_TOOL',
+    )
+    this.name = 'ToolNotFoundError'
+  }
+}
+
+/** Thrown when a tool body or post-policy value violates its declared output. */
+export class ToolOutputError extends HarnessError {
+  /** Schema/value violations in validation order. */
+  readonly violations: string[]
+
+  constructor(toolName: string, violations: string[]) {
+    super(`tool "${toolName}" returned invalid output: ${violations.join('; ')}`, 'INVALID_TOOL_OUTPUT')
+    this.name = 'ToolOutputError'
+    this.violations = violations
+  }
+}
+
+/** Convert one projector exception into the canonical invalid-output failure. */
+function projectionError(toolName: string, projector: 'render' | 'presentationMeta', error: unknown): ToolOutputError {
+  return new ToolOutputError(toolName, [`output.${projector} failed: ${errorMessage(error)}`])
+}
+
+/** Snapshot one projector result before later durable-result materialization. */
+function snapshotProjection<T>(toolName: string, projector: 'render' | 'presentationMeta', candidate: T): T {
+  try {
+    const detached = snapshotJsonValue(candidate)
+    if (detached === undefined) {
+      throw new ToolOutputError(toolName, [`output.${projector} returned non-lossless JSON`])
+    }
+    return detached
+  } catch (error: unknown) {
+    if (error instanceof ToolOutputError) throw error
+    throw projectionError(toolName, projector, error)
+  }
+}
+
+/** Snapshot one body or policy value into the canonical invalid-output failure class. */
+function snapshotToolValue(toolName: string, candidate: unknown): JsonValue {
+  try {
+    const detached = snapshotJsonValue(candidate)
+    if (detached === undefined) throw new ToolOutputError(toolName, ['value is not lossless JSON'])
+    return detached as JsonValue
+  } catch (error: unknown) {
+    if (error instanceof ToolOutputError) throw error
+    throw new ToolOutputError(toolName, [`value snapshot failed: ${errorMessage(error)}`])
+  }
+}
+
+/** Successful canonical tool execution, including its Native/model projection. */
+export interface ToolExecutionSuccess {
+  readonly isError: false
+  /** Execution-local canonical value; deliberately omitted from durable events. */
+  readonly value: JsonValue
+  readonly content: ContentBlock[]
+  readonly error?: never
+  readonly meta?: JsonValue
+  readonly additionalContexts?: UserMessage[]
+  /** The agent loop stops after committing this successful result batch. */
+  readonly concludesTurn?: true
+}
+
+/** Failed canonical tool execution; failures never carry a successful value. */
+export interface ToolExecutionFailure {
+  readonly isError: true
+  readonly error: ToolFailure
+  readonly value?: never
+  readonly content: ContentBlock[]
+  readonly meta?: JsonValue
+  readonly additionalContexts?: UserMessage[]
+  readonly concludesTurn?: never
+}
+
+/** The discriminated, execution-local outcome of one tool call. */
+export type ToolExecutionResult = ToolExecutionSuccess | ToolExecutionFailure
+
+/**
+ * Pre-dispatch decision. `allow` runs the call; `deny` materializes an error;
+ * `ask` runs only after an approval service returns `allowed-once` and otherwise
+ * denies. Input rewriting is excluded because arguments are already logged and
+ * presented.
+ */
+export type PreToolDecision =
+  | { kind: 'allow' }
+  | { kind: 'deny'; reason: string }
+  | { kind: 'ask'; reason?: string }
+
+/**
+ * Post-dispatch decision: accept, replace one projection, attach context for the
+ * next request, or block by turning corrective feedback into an error result.
+ */
+export type PostToolDecision =
+  | { kind: 'accept'; content?: ContentBlock[]; value?: never; additionalContexts?: UserMessage[] }
+  | { kind: 'accept'; value: JsonValue; content?: never; additionalContexts?: UserMessage[] }
+  | { kind: 'block'; feedback: ContentBlock[]; additionalContexts?: UserMessage[] }
+
+/**
+ * Best-effort human-readable message from an arbitrary thrown value: Error
+ * instances use `.message`; non-Error objects with a string `message`
+ * property (e.g. `throw { message: 'denied' }`) use it too; everything else
+ * is stringified.
+ */
+function errorMessage(error: unknown): string {
+  try {
+    if (error instanceof Error) return error.message
+    if (typeof error === 'object' && error !== null
+      && 'message' in error && typeof error.message === 'string') {
+      return error.message
+    }
+    return String(error)
+  } catch {
+    // A hostile thrown value can trap `instanceof`, property access, or string
+    // coercion. Error normalization is the outermost safety boundary, so its
+    // fallback must itself be total.
+    return '<unprintable thrown value>'
+  }
+}
+
+/** Derive one failure message from policy feedback without changing its rendered blocks. */
+function failureMessageFromContent(content: ContentBlock[]): string {
+  const text = content
+    .map(block => block.type === 'text' ? block.text : `[${block.type} content]`)
+    .join('\n')
+  return text.length > 0 ? text : 'tool result blocked by post-execute policy'
+}
+
+/** Snapshot and freeze one durable tool-result projection or reject lossy data. */
+function materializePresentation<T>(candidate: T): T {
+  const detached = snapshotJsonValue(candidate)
+  if (detached === undefined) {
+    throw new TypeError('tool result must be losslessly JSON-serializable')
+  }
+  return deepFreeze(detached)
+}
+
+/** Structured `{ name, code }` for a thrown HarnessError, else undefined. */
+function errorInfo(error: unknown): ToolErrorInfo | undefined {
+  try {
+    return error instanceof HarnessError ? { name: error.name, code: error.code } : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** How the registry presents its tools to the model (see {@link Config.mode}). */
+export type ToolPresentationMode = 'native' | 'ptc' | 'both'
+
+/** Plugin config: how the registered tools are presented to the model. */
+export interface Config {
+  /**
+   * Model presentation. `native` (default) sends every visible schema; `ptc`
+   * sends only `run_code` plus a generated SDK prompt and collapses the
+   * executor to the same surface (a model-direct call may only name
+   * `run_code`; `run_code` SDK sub-dispatches keep every visible tool); `both`
+   * sends both forms. PTC mode requires a `ctx.codeRuntime` whose `language`
+   * has a registered SDK renderer (TypeScript or Python) and fail prompt
+   * assembly when it is absent or has no renderer. Under `ptc`, native names
+   * in `toolOrder` are invalid.
+   */
+  mode?: ToolPresentationMode
+  /**
+   * Concurrency cap for a `run_code` program's overlapping sub-calls
+   * (default 10, the loop scheduler's own default). Sub-calls follow the
+   * native scheduling contract — only calls whose tools classify
+   * concurrency-safe overlap; exclusive calls form barriers — so `1`
+   * restores strictly serial dispatch. Must be a positive integer.
+   */
+  maxParallelSubCalls?: number
+}
+
+/**
+ * Per-scope filter over global tools. Restrictions intersect and do not affect
+ * scoped registrations or the reserved PTC mode transport.
+ */
+export interface ToolRestriction {
+  /** Global tool names that stay visible; everything else is removed. */
+  readonly allow?: readonly string[]
+  /** Global tool names removed from visibility. */
+  readonly deny?: readonly string[]
+}
+
+/** One restriction compiled at registration for repeated live-global lookup. */
+interface CompiledToolRestriction {
+  readonly allow?: ReadonlySet<string>
+  readonly deny?: ReadonlySet<string>
+}
 
 /** One scope's complete registry view, derived in a single layer traversal. */
 interface ToolView {
@@ -222,10 +693,84 @@ interface ToolView {
   readonly restrictableNames: ReadonlySet<string>
 }
 
+/**
+ * A monotonic execution guard evaluated after every `tools/pre-execute`
+ * listener and before the tool body. Returning a reason denies the call;
+ * returning `undefined` leaves it unchanged. Because guards have no allow
+ * result, listener ordering cannot turn a denial back into permission.
+ * @param execution - the identity-protected call after extensible pre-execute policy completed.
+ * @returns a final denial reason, or `undefined` to leave the call allowed.
+ */
+export type ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined
+
+/** One scope's complete tool-registry contribution. */
+class ToolLayer implements ScopeLayer {
+  readonly tools: NamedEntries<ToolDefinition>
+  readonly restrictions = new AnonymousEntries<CompiledToolRestriction>()
+  readonly guards = new AnonymousEntries<ToolGuard>()
+  /**
+   * Presentation this scope's agent declared for itself, shadowing the
+   * deployment default. One cell rather than an entry table: two answers to
+   * "which form does the model see" is a contradiction, not a merge.
+   */
+  mode: ToolPresentationMode | undefined
+
+  constructor(scope: ScopeKey | undefined) {
+    this.tools = new NamedEntries(name => new Error(scope === undefined
+      ? `tool "${name}" is already registered (for a per-agent variant, register through that agent's \`agent.ctx\` instead)`
+      : `tool "${name}" is already registered in this scope`))
+  }
+
+  /** Whether every contribution table in this aggregate layer is empty. */
+  isEmpty(): boolean {
+    return this.tools.isEmpty() && this.restrictions.isEmpty() && this.guards.isEmpty()
+      && this.mode === undefined
+  }
+
+  /** Whether every compiled restriction in this layer admits a global tool name. */
+  admits(name: string): boolean {
+    for (const filter of this.restrictions.values()) {
+      if ((filter.allow !== undefined && !filter.allow.has(name))
+        || (filter.deny !== undefined && filter.deny.has(name))) return false
+    }
+    return true
+  }
+
+  /** First monotonic denial from this layer's live guard registrations. */
+  guardReason(exec: ToolExecution): string | undefined {
+    for (const guard of this.guards.values()) {
+      const reason = guard(exec)
+      if (reason !== undefined) return reason
+    }
+    return undefined
+  }
+}
+
 /** Approval decision plus whether the approval channel reported cancellation. */
 interface ToolAskResolution {
   readonly decision: Extract<PreToolDecision, { kind: 'allow' | 'deny' }>
   readonly approvalCancelled: boolean
+}
+
+/** Caller cancellation and dispatch state kept outside the around-wrapper view. */
+interface ToolCancellationState {
+  readonly callerSignal: AbortSignal
+  bodyInvoked: boolean
+}
+
+/** One dispatch-scoped fused signal plus listener cleanup after the body settles. */
+interface FusedToolSignal {
+  readonly signal: AbortSignal
+  dispose(): void
+}
+
+/** Resolve the run_code overlap cap at the owning config boundary (direct construction bypasses the Loader schema). */
+function resolveMaxParallelSubCalls(value: number | undefined): number {
+  const maxParallelSubCalls = value ?? 10
+  if (!Number.isInteger(maxParallelSubCalls) || maxParallelSubCalls < 1) {
+    throw new Error('maxParallelSubCalls must be a positive integer')
+  }
+  return maxParallelSubCalls
 }
 
 /**
@@ -248,28 +793,18 @@ export class ToolRuntime extends Service {
     finish: (exec, result) => this.finishScheduledExecution(exec, result),
   }
 
+  /** Context deferred by a running tool body, keyed by its scheduler-owned execution. */
+  private deferredContexts = new WeakMap<ToolRunContext, UserMessage[]>()
+  /** Executions whose tool body declared the current turn complete. */
+  private concludingExecutions = new WeakSet<ToolExecution>()
+  /** Original caller cancellation, kept outside the wrapper-mutable execution object. */
+  private cancellationStates = new WeakMap<ToolRunContext, ToolCancellationState>()
+  /** Definition-owned final content transform snapshotted before policy begins. */
+  private contentFinalizers = new WeakMap<ToolRunContext, ToolDefinition['finalizeContent']>()
   private readonly layers = new ScopedLayers(
     scope => new ToolLayer(scope),
-    () => {
-      // Every notified mutation can change any scope's derived view (a global
-      // registration reshapes every agent's chain), so the whole per-scope
-      // cache drops at once. `guard()` registers with notify: false — guards
-      // are execution-time policy, not part of the view.
-      this.globalViewCache = undefined
-      this.scopedViewCache = new WeakMap()
-      this.ctx.emit('tools/change')
-    },
+    () => { this.ctx.emit('tools/change') },
   )
-  /**
-   * Derived views memoized per scope between layer mutations. `view()` sits on
-   * the hot path of every dispatch stage (`get`, `resolveExecution`,
-   * `executionMode`, `schemas`), and rebuilding the inherited map, the
-   * restriction filter, and the two name sets per call is O(layers × tools)
-   * allocation for an identical answer. Cleared wholesale on every notified
-   * layer mutation, so it never outlives the facts it was derived from.
-   */
-  private scopedViewCache = new WeakMap<ScopeKey, ToolView>()
-  private globalViewCache: ToolView | undefined
   /** Presentation for scopes that declare none; {@link presentAs} shadows it per scope. */
   private readonly defaultMode: ToolPresentationMode
   private readonly maxParallelSubCalls: number
@@ -303,8 +838,8 @@ export class ToolRuntime extends Service {
    * Without this the model reads a catalog of tools it is told to use and no
    * statement that only `run_code` may be called, so it emits a native call,
    * receives `UNKNOWN_TOOL` for a tool the prompt just declared, and concludes
-   * the deployment is inconsistent. {@link COLLAPSE_SECTION_ORDER} places the rule
-   * before that guidance rather than after it.
+   * the deployment is inconsistent. Its order places the rule before that
+   * guidance rather than after it.
    *
    * `both` renders empty: native calls do execute there, so the rule is false.
    * @returns the section registration.
@@ -312,7 +847,7 @@ export class ToolRuntime extends Service {
   private collapseSection(): { name: string; order: number; text: (context: { scope?: ScopeKey }) => string } {
     return {
       name: 'tools:ptc-only',
-      order: COLLAPSE_SECTION_ORDER,
+      order: this.ctx.systemPrompt.getSectionOrder('PTC_ONLY'),
       // The SAME predicate the executor denies by, so the prompt cannot state
       // a rule the registry does not enforce (see `collapses`).
       text: context => this.modeFor(context.scope) === 'ptc' ? PTC_ONLY_INSTRUCTION : '',
@@ -332,7 +867,7 @@ export class ToolRuntime extends Service {
   private sdkSection(): { name: string; order: number; text: (context: { scope?: ScopeKey }) => string } {
     return {
       name: 'tools:sdk',
-      order: SDK_SECTION_ORDER,
+      order: this.ctx.systemPrompt.getSectionOrder('TOOLS_SDK'),
       // Regenerate from the calling scope's visible tools in stable order.
       text: (context) => {
         const mode = this.modeFor(context.scope)
@@ -593,9 +1128,9 @@ export class ToolRuntime extends Service {
    * A restriction filters what a scope inherits — the global layer and every
    * ancestor layer on its chain — and never what its OWN layer registers.
    * That exemption is what a per-child capability filter has to keep intact:
-   * the delegation runtime registers a child's reporting and structured-output
-   * tools into the child's own layer, and a filter naming the capabilities the
-   * child may use must not strip the machinery it answers through.
+   * the delegation runtime registers a child's structured-output tool into the
+   * child's own layer, and a filter naming the capabilities the child may use
+   * must not strip the machinery it answers through.
    *
    * Reading the exempt set as "the global layer" instead of "not mine" held
    * only while every model-facing tool sat in the host composition. Once
@@ -606,8 +1141,6 @@ export class ToolRuntime extends Service {
    * @returns the complete derived view for that scope.
    */
   private view(scope?: ScopeKey): ToolView {
-    const cached = scope === undefined ? this.globalViewCache : this.scopedViewCache.get(scope)
-    if (cached !== undefined) return cached
     // Scope-chain layers, farthest ancestor first, the exact scope last.
     const layers = this.layers.chainLayers(scope)
     // Chain-blind on purpose: this is the ONE layer whose registrations the
@@ -647,10 +1180,7 @@ export class ToolRuntime extends Service {
     if (this.modeFor(scope) !== 'native') {
       visible.set(RUN_CODE_NAME, this.requireCodeTransport())
     }
-    const derived: ToolView = { visible, knownNames, restrictableNames }
-    if (scope === undefined) this.globalViewCache = derived
-    else this.scopedViewCache.set(scope, derived)
-    return derived
+    return { visible, knownNames, restrictableNames }
   }
 
   /**
@@ -664,18 +1194,6 @@ export class ToolRuntime extends Service {
    */
   get(name: string, scope?: ScopeKey): ToolDefinition | undefined {
     return this.view(scope).visible.get(name)
-  }
-
-  /**
-   * The tool names one scope sees — the keys of {@link get}/{@link schemas}'s
-   * view without projecting or cloning any schema payload. PTC binding
-   * enumeration needs only these names; cloning every parameters object for
-   * them was pure waste.
-   * @param scope - the viewing scope (the agent); omitted = the global view.
-   * @returns the visible tool names in view order.
-   */
-  toolNames(scope?: ScopeKey): string[] {
-    return [...this.view(scope).visible.keys()]
   }
 
   /**
@@ -835,6 +1353,7 @@ export class ToolRuntime extends Service {
   }
 
   private createExecution(exec: ToolExecutionInput): ScheduledToolPreparation | { kind: 'ready'; exec: MutableToolRunContext } {
+    const deferredContexts: UserMessage[] = []
     const token = createExecutionToken()
     const callId = exec.callId
     const rootCallId = exec.rootCallId ?? callId
@@ -851,6 +1370,7 @@ export class ToolRuntime extends Service {
     // listeners still see every name that reaches the registry.
     const visible = this.get(name, agent)
     const collapsed = visible !== undefined && this.collapses(name, agent, parent !== undefined)
+    const concludingExecutions = this.concludingExecutions
     const base = {
       token,
       callId,
@@ -860,10 +1380,10 @@ export class ToolRuntime extends Service {
       ...agent !== undefined ? { agent } : {},
       ...parent !== undefined ? { parent } : {},
       deferContext(context: UserMessage): void {
-        executionStateOf(this as unknown as ToolExecution).deferredContexts.push(context)
+        deferredContexts.push(context)
       },
       concludeTurn(): void {
-        executionStateOf(this as unknown as ToolExecution).concludedTurn = true
+        concludingExecutions.add(this as unknown as ToolExecution)
       },
     }
     // Capture the finalizer BEFORE argument materialization: the
@@ -879,24 +1399,18 @@ export class ToolRuntime extends Service {
     const capturedFinalizer = visible?.finalizeContent?.bind(visible)
     const finalizerFor = (): ToolDefinition['finalizeContent'] | undefined =>
       collapsed && !signal.aborted ? undefined : capturedFinalizer
-    const attachState = (execution: MutableToolRunContext): ToolExecutionState => {
-      const state: ToolExecutionState = {
-        callerSignal: signal,
-        bodyInvoked: false,
-        deferredContexts: [],
-        concludedTurn: false,
-        contentFinalizer: finalizerFor(),
-      }
-      registerExecutionState(execution, state)
-      return state
-    }
     try {
       const detached = snapshotJsonValue(exec.arguments)
       if (detached === undefined) {
         throw new TypeError('tool execution arguments must be losslessly JSON-serializable')
       }
       const execution: MutableToolRunContext = { ...base, arguments: deepFreeze(detached) }
-      attachState(execution)
+      this.deferredContexts.set(execution, deferredContexts)
+      this.contentFinalizers.set(execution, finalizerFor())
+      this.cancellationStates.set(execution, {
+        callerSignal: signal,
+        bodyInvoked: false,
+      })
       if (collapsed) {
         // The collapse denies the call before the policy pipeline, but a
         // pre-dispatch abort still keeps the established cancellation
@@ -922,7 +1436,7 @@ export class ToolRuntime extends Service {
       return { kind: 'ready', exec: execution }
     } catch (error: unknown) {
       const execution: MutableToolRunContext = { ...base, arguments: undefined }
-      attachState(execution)
+      this.contentFinalizers.set(execution, finalizerFor())
       return { kind: 'final-result', exec: execution, result: toolErrorResult(error) }
     }
   }
@@ -967,7 +1481,7 @@ export class ToolRuntime extends Service {
         return await next({
           kind: 'post-result',
           exec,
-          result: this.commitFinalResult(exec, {
+          result: this.materializeFinalResult({
             content: [{ type: 'text', text: `Error: ${denialReason}` }],
             isError: true,
             error: { message: denialReason },
@@ -985,12 +1499,18 @@ export class ToolRuntime extends Service {
 
   /** Whether the original caller signal is currently aborted. */
   private callerCancelled(exec: ToolRunContext): boolean {
-    return executionStateOf(exec).callerSignal.aborted
+    const state = this.cancellationStates.get(exec)
+    /* v8 ignore next -- only registry-minted executions reach the staged scheduler methods */
+    if (state === undefined) throw new Error('tool registry scheduler invariant violated: missing cancellation state')
+    return state.callerSignal.aborted
   }
 
   /** Canonical cancellation outcome selected by whether the tool body started. */
   private cancellationResult(exec: ToolRunContext, prior?: ToolExecutionResult): ToolExecutionResult {
-    return executionStateOf(exec).bodyInvoked
+    const state = this.cancellationStates.get(exec)
+    /* v8 ignore next -- only registry-minted executions reach the staged scheduler methods */
+    if (state === undefined) throw new Error('tool registry scheduler invariant violated: missing cancellation state')
+    return state.bodyInvoked
       ? toolAbortedResult(prior)
       : toolAbortedBeforeDispatchResult(prior)
   }
@@ -1001,7 +1521,9 @@ export class ToolRuntime extends Service {
    * a started promise reaches quiescence before its outcome becomes `ABORTED`.
    */
   private async dispatchToolBody(exec: MutableToolRunContext): Promise<ToolExecutionResult> {
-    const state = executionStateOf(exec)
+    const state = this.cancellationStates.get(exec)
+    /* v8 ignore next -- only registry-minted executions reach the staged scheduler methods */
+    if (state === undefined) throw new Error('tool registry scheduler invariant violated: missing cancellation state')
     const wrapperSignal = exec.signal
     const fused = fuseToolSignals(state.callerSignal, wrapperSignal)
     const signal = fused.signal
@@ -1044,7 +1566,9 @@ export class ToolRuntime extends Service {
         () => this.dispatchToolBody(mutableExec),
       )
       const normalized = this.normalizeDispatchResult(exec, result)
-      const deferredContexts = executionStateOf(exec).deferredContexts
+      const deferredContexts = this.deferredContexts.get(exec)
+      /* v8 ignore next -- dispatch only receives executions minted by this registry's prepare stage */
+      if (deferredContexts === undefined) throw new Error('tool registry scheduler invariant violated: unprepared execution')
       const resultWithDeferredContexts: ToolExecutionResult = deferredContexts.length === 0
         ? normalized
         : this.markCanonical(exec, {
@@ -1098,24 +1622,15 @@ export class ToolRuntime extends Service {
   private finishScheduledExecution(exec: ToolRunContext, result: ToolExecutionResult): ToolExecutionResult {
     let materializedResult: ToolExecutionResult
     try {
-      // A canonical result that already materialized (a registry-produced
-      // success, or an earlier stage's materialize) is reused as-is: this is
-      // the hot no-policy path, and re-materializing it would deep-copy the
-      // whole content for an identical frozen object.
-      materializedResult = this.finalizedResults.has(result)
-        ? result
-        : this.commitFinalResult(exec, result)
+      materializedResult = this.materializeFinalResult(result)
     } catch (error: unknown) {
-      materializedResult = this.commitFinalResult(exec, toolErrorResult(error))
+      materializedResult = this.materializeFinalResult(toolErrorResult(error))
     }
     let finalResult: ToolExecutionResult
     try {
-      const withFinalContent = this.applyFinalContent(exec, materializedResult)
-      finalResult = withFinalContent === materializedResult
-        ? materializedResult
-        : this.commitFinalResult(exec, withFinalContent)
+      finalResult = this.materializeFinalResult(this.applyFinalContent(exec, materializedResult))
     } catch (error: unknown) {
-      finalResult = this.commitFinalResult(exec, toolErrorResult(error))
+      finalResult = this.materializeFinalResult(toolErrorResult(error))
     }
     this.notifyResult(exec, finalResult)
     return finalResult
@@ -1123,7 +1638,7 @@ export class ToolRuntime extends Service {
 
   /** Apply the snapshotted tool-owned content transform without exposing other result fields. */
   private applyFinalContent(exec: ToolRunContext, result: ToolExecutionResult): ToolExecutionResult {
-    const finalizeContent = executionStateOf(exec).contentFinalizer
+    const finalizeContent = this.contentFinalizers.get(exec)
     if (finalizeContent === undefined) return result
     const content = finalizeContent(exec, result)
     return content === undefined ? result : { ...result, content }
@@ -1258,32 +1773,10 @@ export class ToolRuntime extends Service {
 
   /** Registry-normalized results and the exact dispatch that validated each value. */
   private readonly canonicalResults = new WeakMap<object, ToolExecutionToken>()
-  /**
-   * Results that already passed {@link commitFinalResult} — lossless
-   * snapshotted and deep-frozen. Materialization is the most expensive step
-   * (a full deep copy of content/meta), and the pipeline used to repeat it for
-   * the same result on every stage boundary; this set lets
-   * {@link finishScheduledExecution} short-circuit those repeats.
-   */
-  private readonly finalizedResults = new WeakSet<object>()
 
   /** Mark one registry-normalized result as canonical only for its owning dispatch. */
   private markCanonical<T extends ToolExecutionResult>(exec: ToolExecution, result: T): T {
     this.canonicalResults.set(result, exec.token)
-    return result
-  }
-
-  /**
-   * Register one materialized result under both marks: canonical for its
-   * owning dispatch (a wrapper hand-off must not re-normalize it) and
-   * finalized (a later finish stage must not re-materialize it). Safe for
-   * every caller: materialized outputs flow only to finish/notify — never
-   * back through `normalizeDispatchResult` — except the dispatch hot path,
-   * where the canonical mark is exactly what lets that check short-circuit.
-   */
-  private markCanonicalAndFinalized<T extends ToolExecutionResult>(exec: ToolExecution, result: T): T {
-    this.canonicalResults.set(result, exec.token)
-    this.finalizedResults.add(result)
     return result
   }
 
@@ -1310,13 +1803,9 @@ export class ToolRuntime extends Service {
       }
       meta = snapshotProjection(tool.name, 'presentationMeta', projected)
     }
-    const concludesTurn = executionStateOf(exec).concludedTurn
-    // Every field here is already a freshly detached, lossless snapshot taken
-    // above (value/content/meta), so the final assembly can freeze in place —
-    // re-materializing it would deep-copy the whole content again for an
-    // identical answer.
-    return this.markCanonicalAndFinalized(exec, deepFreeze({
-      isError: false as const,
+    const concludesTurn = this.concludingExecutions.has(exec)
+    return this.markCanonical(exec, this.materializeFinalResult({
+      isError: false,
       value,
       content,
       ...meta !== undefined ? { meta } : {},
@@ -1346,23 +1835,102 @@ export class ToolRuntime extends Service {
   }
 
   /** Materialize the authoritative commit outcome once, immediately before `tools/result`. */
-  private commitFinalResult(exec: ToolExecution, result: ToolExecutionResult): ToolExecutionResult {
+  private materializeFinalResult(result: ToolExecutionResult): ToolExecutionResult {
     const presentation = {
       content: result.content,
       ...result.meta !== undefined ? { meta: result.meta } : {},
       ...result.additionalContexts !== undefined ? { additionalContexts: result.additionalContexts } : {},
     }
-    const materialized = result.isError
-      ? materializePresentation({ isError: true as const, error: result.error, ...presentation })
-      : deepFreeze({
-        ...materializePresentation({
-          isError: false as const,
-          ...presentation,
-          ...result.concludesTurn === true ? { concludesTurn: true as const } : {},
-        }),
-        value: result.value,
-      })
-    return this.markCanonicalAndFinalized(exec, materialized)
+    if (result.isError) {
+      return materializePresentation({ isError: true as const, error: result.error, ...presentation })
+    }
+    const detached = materializePresentation({
+      isError: false as const,
+      ...presentation,
+      ...result.concludesTurn === true ? { concludesTurn: true as const } : {},
+    })
+    return deepFreeze({ ...detached, value: result.value })
+  }
+}
+
+/** Mint a same-process correlation token whose identity is its value. */
+function createExecutionToken(): ToolExecutionToken {
+  return Symbol('dsh.tool.execution') as ToolExecutionToken
+}
+
+function toolErrorResult(error: unknown): ToolExecutionResult {
+  const info = errorInfo(error)
+  const message = errorMessage(error)
+  return {
+    content: [{ type: 'text', text: `Error: ${message}` }],
+    isError: true,
+    error: { message, ...info ? { info } : {} },
+  }
+}
+
+/** Read live abort state across an await without treating it as synchronously immutable. */
+function isAborted(signal: AbortSignal): boolean {
+  return signal.aborted
+}
+
+/**
+ * Fuse caller and wrapper cancellation without nesting `AbortSignal.any`.
+ * Keeping the relay dispatch-scoped also removes listeners when work settles.
+ */
+function fuseToolSignals(caller: AbortSignal, wrapper: AbortSignal): FusedToolSignal {
+  if (caller === wrapper) return { signal: caller, dispose() {} }
+
+  const controller = new AbortController()
+  let listening = false
+  const dispose = (): void => {
+    if (!listening) return
+    listening = false
+    caller.removeEventListener('abort', abortFromCaller)
+    wrapper.removeEventListener('abort', abortFromWrapper)
+  }
+  const abortFrom = (source: AbortSignal): void => {
+    const reason: unknown = source.reason
+    controller.abort(reason)
+    dispose()
+  }
+  const abortFromCaller = (): void => { abortFrom(caller) }
+  const abortFromWrapper = (): void => { abortFrom(wrapper) }
+
+  if (wrapper.aborted) abortFromWrapper()
+  else if (caller.aborted) abortFromCaller()
+  else {
+    listening = true
+    caller.addEventListener('abort', abortFromCaller, { once: true })
+    wrapper.addEventListener('abort', abortFromWrapper, { once: true })
+  }
+  return { signal: controller.signal, dispose }
+}
+
+/** Canonical result when cancellation supersedes success after body invocation. */
+function toolAbortedResult(prior?: ToolExecutionResult): ToolExecutionResult {
+  const additionalContexts = prior?.additionalContexts ?? []
+  return {
+    content: [{ type: 'text', text: 'Error: tool call aborted' }],
+    isError: true,
+    error: {
+      message: 'tool call aborted',
+      info: { name: 'AbortError', code: TOOL_ABORTED },
+    },
+    ...additionalContexts.length > 0 ? { additionalContexts } : {},
+  }
+}
+
+/** Canonical result when cancellation prevents tool body invocation. */
+function toolAbortedBeforeDispatchResult(prior?: ToolExecutionResult): ToolExecutionResult {
+  const additionalContexts = prior?.additionalContexts ?? []
+  return {
+    content: [{ type: 'text', text: 'Error: tool call aborted before dispatch' }],
+    isError: true,
+    error: {
+      message: 'tool call aborted before dispatch',
+      info: { name: 'AbortError', code: TOOL_ABORTED_BEFORE_DISPATCH },
+    },
+    ...additionalContexts.length > 0 ? { additionalContexts } : {},
   }
 }
 

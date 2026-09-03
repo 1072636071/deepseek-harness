@@ -35,9 +35,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-session-query` | `session_event_read`, `session_event_search`, `session_event_trace`, `session_search`, `session_trace` | `ctx.tools`, `ctx.systemPrompt`, `ctx.sessionQuery`, `a calling Agent for workspace authority` | `tool/call`, `tool/result` | - | The five read-only tools hide provider cursors and authorize every result from the immutable calling agent session. The package is opt-in; compositions that need enforced deadlines or bounded inline output also mount the generic timeout or spill policies. |
 | `@deepseek-ai/dsh-tool-subagent` | `list_subagent_models`, `subagent` | `ctx.tools`, `ctx.subagents`, `ctx.systemPrompt`, `ctx.llm for model discovery and selected-route validation` | `tool/call`, `tool/result`, `child session events through the chosen provider` | `subagent`, `subagent_fork` | The registered delegation name is the load-time `toolName` config (default `subagent`); the default schema above has model selection off, while the discovery schema is shown as the fixed companion available in an enabled Session. Web presets sample the Plugins preference for each new top-level Session and preserve that decision for its child Sessions; `subagent_fork` remains fixed-route. Each instance independently controls whether it reads model-selection settings and its background behavior through `modelSelectionSettings`, `backgroundMode`, and `enableRunInBackground`. |
 | `@deepseek-ai/dsh-tool-subagent-control` | `interrupt_agent`, `list_agents`, `send_message` | `ctx.tools`, `ctx.subagents`, `ctx.agents and ctx.sessionProjections (list_agents only)` | `tool/call`, `tool/result`, `child session events through ctx.subagents` | - | The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries). |
-| `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
-| `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
+| `@deepseek-ai/dsh-experimental-tool-agent-team` | `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -48,7 +47,7 @@ This table connects model-visible tool names to the plugin package and service s
 
 ### `ask_user_question`
 
-Ask the user a concise question for confirmation, a choice, or missing information. Send one or more questions, each with a stable id echoed in the answer.
+Ask the user a concise question when you need confirmation, a choice, or missing information before proceeding. Send one or more questions, each with a stable id that will be echoed in the answer.
 
 ```json
 {
@@ -122,7 +121,7 @@ ask_user_question pauses the tool call until the active UI provider returns a hu
 
 ### `run_code`
 
-Execute a TypeScript program against the available tools. `code` = the BODY of an async function (erasable syntax; top-level `await`/`return` work); `description` = a short summary. Call tools as `await tools.name(args)` per the system-prompt declarations. Only what you print or return is output. Image-bearing subtool results attach after the run.
+Execute a TypeScript program against the available tools. Takes two required arguments: `code`, the BODY of an async function (erasable syntax only; top-level `await` and `return` work), and `description`, a short summary of what the program does. Call tools as `await tools.name(args)` per the declarations in the system prompt. Only what you print or return is program output — curate it. Image-bearing subtool results are attached after the run.
 
 ```json
 {
@@ -154,7 +153,7 @@ Owned by the tool registry as a reserved transport outside filterable capability
 
 ### `exit_plan_mode`
 
-Use only in plan mode. Present your plan for the user's review and, on approval, leave plan mode. Send the COMPLETE plan as markdown starting with a # heading. The user approves (execute from your next step) or keeps planning — feedback returns in the result; revise and re-present.
+Use only in plan mode. Present your plan for the user's review and, on approval, leave plan mode. Send the COMPLETE plan as markdown, starting with a # heading that names it. The user may approve (carry out the plan from your next step) or keep planning — their feedback comes back in the tool result; revise and present again.
 
 ```json
 {
@@ -181,7 +180,7 @@ exit_plan_mode stays in the model-facing schema while planning is inactive so tr
 
 ### `bash`
 
-Execute a bash command and return its stdout/stderr. Each call runs in a fresh shell: no state (cwd, variables, functions) persists between calls — pass `workdir` instead of using `cd`. Non-zero exits are reported as `[exit code: N]`. Current harness environment facts are exposed through managed `$DSH_*` variables; inspect them when needed. A blocked file operation under a file sandbox is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.
+Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell: no state (cwd, variables, functions) persists between calls — pass `workdir` instead of using `cd`. Non-zero exits are reported as `[exit code: N]`. Current harness environment facts are exposed through managed `$DSH_*` variables; inspect them when needed. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.
 
 ```json
 {
@@ -225,7 +224,7 @@ The bash tool is the model-facing consumer of the bash executor seam. A `run_in_
 
 ### `pwsh`
 
-Execute a PowerShell command and return its stdout/stderr. Each call runs in a fresh pwsh process: no state (cwd, variables, functions) persists between calls — pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\...`); read environment variables with `$env:NAME`. Non-zero exits are reported as `[exit code: N]`. Current harness environment facts are exposed through managed `$env:DSH_*` variables; inspect them when needed. A blocked file operation under a file sandbox is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.
+Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Each call runs in a fresh pwsh process: no state (cwd, variables, functions) persists between calls — pass `workdir` instead of using `cd`. Paths use native Windows form (`C:\...`); read environment variables with `$env:NAME`. Non-zero exits are reported as `[exit code: N]`. Current harness environment facts are exposed through managed `$env:DSH_*` variables; inspect them when needed. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]` — a policy denial, not a bug in the command; do not retry another way. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. On Windows a force-killed command settles as `[exit code: 1]` without a signal marker — treat it as an interruption, not a command failure. Set `run_in_background: true` for long-running commands: the call returns a job id immediately; read its output with `job_output` and stop it with `job_kill`.
 
 ```json
 {
@@ -269,7 +268,7 @@ The pwsh tool is the PowerShell-dialect consumer of the bash executor seam for W
 
 ### `cordis_define`
 
-Define one immutable Cordis Package. kind:"new": give only a 3–6-lowercase-letter idPrefix; Host returns the final pluginId and packageId. kind:"existing": append a Package to an existing Plugin by its exact pluginId (older versions kept). Provide at least one of code.host/code.client — each a plain-JS function body returning a Cordis Plugin; no TypeScript/JSX/import transformation. Query Inspect before depending on a Service/Event/Builtin/Slot/token. Define only validates params + syntax and records source: no approval, apply, or currentPackageId change. On success, call cordis_run with the returned IDs.
+Define an immutable Cordis Package. For a new Plugin, use kind:"new" and provide only a semantic prefix of 3–6 lowercase English letters; the Host returns the final pluginId and packageId. To modify an existing Plugin, use kind:"existing" with its exact pluginId to append a Package without overwriting older versions. Provide at least one of code.host and code.client. Each value is a plain JavaScript function body that returns a Cordis Plugin; no TypeScript, JSX, or import transformation occurs. Query Inspect before depending on a Service, Event, Builtin, Slot, or token. Define only validates parameters and syntax and records source: it does not request approval, execute apply, or change currentPackageId. On success, call cordis_run with the returned IDs.
 
 ```json
 {
@@ -351,7 +350,7 @@ Source: [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/
 
 ### `cordis_inspect_list`
 
-List Cordis Inspect Providers known to the Host: local Host Providers + latest Client manifests. Each entry has platform, purpose, read-only methods, and input/output schemas. Call before creating/modifying a Package, then pick provider + method for cordis_inspect_query. Do not guess names or treat an Inspect method as a business Service Plugin code can call.
+List every Cordis Inspect Provider currently known to the Host, including local Host Providers and the latest manifests synchronized from the Client. Each entry includes its platform, purpose, read-only methods, and input/output schemas. Call this Tool before creating or modifying a Package, then select the provider and method for cordis_inspect_query from its result. Do not guess names or treat an Inspect method as a business Service that Plugin code can call.
 
 ```json
 {
@@ -364,7 +363,7 @@ Source: [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/
 
 ### `cordis_inspect_query`
 
-Run a read-only query declared by an Inspect Provider. platform/provider/method come from cordis_inspect_list; input must satisfy that method's schema. Use before cordis_define to read exact Service methods, Event modes, Builtin signatures, Tool schemas, theme tokens, or lived Slot trees/props. Host queries run locally; a Client query waits for the first valid page or cancellation. Cannot invoke business Service methods or modify the runtime. For Service.listService / Event.listEvents, query empty to navigate the signature directory then the exact item for its contract + referenced types. For Slots.listSubTree, query empty to navigate the tree then the exact root for its full registration contract + props.
+Run a read-only query explicitly declared by an Inspect Provider. platform, provider, and method must come from cordis_inspect_list, and input must satisfy that method's schema. Use this Tool before cordis_define to read exact Service methods, Event modes, Builtin signatures, Tool schemas, theme tokens, or live Slot trees and props. Host queries run locally. A Client query waits for the first valid page response and remains pending until a page answers or the Tool is cancelled. This Tool cannot invoke business Service methods or modify the runtime. For Service.listService and Event.listEvents, query without input to navigate the compact signature directory, then query the exact service or event for its structured contract and referenced types. For Slots.listSubTree, query without root to navigate the compact tree, then query the exact root for its complete registration contract and props.
 
 ```json
 {
@@ -402,7 +401,7 @@ Source: [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/
 
 ### `cordis_inspect_self`
 
-Inspect dynamic Cordis objects owned by the current Session at increasing detail. No IDs: Plugin summaries only. pluginId alone: version pointers, latest Run, every Package summary. pluginId + packageId: that immutable Package's Host/Client source + runtime diagnostics (packageId cannot be given alone). Query an exact Package before handling @pluginId, repairing an async failure, or defining an updated version. Read-only: no code execution, no version-pointer change.
+Inspect dynamic Cordis objects owned by the current Session at increasing levels of detail. With no IDs, list only Plugin summaries. With pluginId alone, return version pointers, the latest Run, and every Package summary. Only pluginId plus packageId returns that immutable Package's Host/Client source and runtime diagnostics. packageId cannot be supplied alone. Query an exact Package before handling @pluginId, repairing an asynchronous failure, or defining an updated version. This Tool is read-only: it neither executes code nor changes version pointers.
 
 ```json
 {
@@ -424,7 +423,7 @@ Source: [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/
 
 ### `cordis_run`
 
-Activate one exact Package of a dynamic Plugin. mode:"run": first activation, restarting current, or rollback; mode:"update": switch to a different Package (allowed while stopped). An unauthorized Client Package makes an approval request and returns awaiting-approval; authorized returns starting and continues async in the browser. Neither waits for the final outcome. currentPackageId changes only on complete success; failure keeps the old current + target next. Outcome is reported via state + steering. After a technical failure, read diagnostics with cordis_inspect_self, fix the same Plugin, retry; never re-request approval after the user rejects it.
+Activate one exact Package of a dynamic Plugin. Use mode:"run" for the first activation, restarting currentPackageId, or rollback. When current exists, use mode:"update" to switch to a different Package, even if the Plugin is currently stopped. An unauthorized Client Package creates an approval request and returns awaiting-approval; an authorized Package returns starting and continues asynchronously in the browser. Neither result waits for the final outcome inside the Tool. currentPackageId changes only after complete success; on failure, the old current and target next remain. Asynchronous success, rejection, or technical failure is reported through state and steering. After a technical failure, read diagnostics with cordis_inspect_self, correct the same Plugin, and retry autonomously. Do not request approval again after the user rejects it.
 
 ```json
 {
@@ -459,7 +458,7 @@ Source: [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/
 
 ### `cordis_stop`
 
-Stop the current Run of a dynamic Plugin and cancel unfinished approval/activation requests. Keeps the Plugin, Packages, grants, currentPackageId, nextPackageId for later run/update. Idempotent on an already-stopped Plugin. Use to disable effects temporarily; use cordis_undefine for permanent removal.
+Stop the current Run of a dynamic Plugin and cancel unfinished approval or activation requests. Retain the Plugin, every immutable Package, grants, currentPackageId, and nextPackageId so it can later run or update directly. Stopping an already stopped Plugin succeeds idempotently. Use this Tool to disable effects temporarily; use cordis_undefine for permanent removal.
 
 ```json
 {
@@ -480,7 +479,7 @@ Source: [`packages/extensions/tool-cordis/src/index.ts`](../packages/extensions/
 
 ### `cordis_undefine`
 
-Permanently remove a dynamic Plugin owned by the current Session. If running or awaiting approval, stop it and cancel the request first, then delete every Package, grant, and version pointer. Afterwards its pluginId, packageIds, @ reference, and Package business views are invalid; history keeps only a "Plugin removed" record. When versions must remain for restart/rollback, use cordis_stop instead.
+Permanently remove a dynamic Plugin owned by the current Session. If it is running or awaiting approval, first stop it and cancel the request, then delete every Package, grant, and version pointer. After this returns, its pluginId, packageIds, @ reference, and Package business views are invalid; historical cards retain only a "Plugin removed" record. Do not call this Tool when versions must remain available for restart or rollback; use cordis_stop instead.
 
 ```json
 {
@@ -561,7 +560,17 @@ One owner-isolated persistent pwsh tool, the Windows counterpart of the persiste
 
 ### `str_replace_editor`
 
-View, create, and edit files; state persists across calls. `view` shows a file with line numbers or lists a directory up to 2 levels deep; `create` writes a new file (fails if the path already exists as a file); `str_replace` replaces literal text that must match exactly once in the file; `insert` adds lines after a numbered line.
+Custom editing tool for viewing, creating and editing files
+* State is persistent across command calls and discussions with the user
+* If `path` is a file, `view` displays the result of applying `cat -n`. If `path` is a directory, `view` lists non-hidden files and directories up to 2 levels deep
+* The `create` command cannot be used if the specified `path` already exists as a file
+* If a `command` generates a long output, it will be truncated and marked with `<response clipped>`
+* A null placeholder for a parameter unused by the selected command is treated as omitted. Required parameters still need values; omit `str_replace.new_str` rather than setting it to null when deleting a match
+
+Notes for using the `str_replace` command:
+* The `old_str` parameter should match EXACTLY one or more consecutive lines from the original file. Be mindful of whitespaces!
+* If the `old_str` parameter is not unique in the file, the replacement will not be performed. Make sure to include enough context in `old_str` to make it unique
+* The `new_str` parameter should contain the edited lines that should replace the `old_str`
 
 ```json
 {
@@ -721,7 +730,7 @@ Source: [`packages/fs/tool-fs/src/index.ts`](../packages/fs/tool-fs/src/index.ts
 
 ### `read_image`
 
-Read a PNG/JPEG/WebP/GIF image file and return the image itself. Harness validates and downscales large supported images before the next model request, so use this tool directly instead of installing image libraries or creating thumbnails. Requires the current model to accept image input.
+Read a PNG/JPEG/WebP/GIF file and return the image itself. A path without a file extension is accepted; the format is detected from the file content, so normalized attachment paths can be passed directly without copying or renaming. Harness validates and downscales large supported images before the next model request, so use this tool directly instead of installing image libraries or creating thumbnails merely to inspect an image. Independent files may be read concurrently in small batches. Requires the current model to accept image input.
 
 ```json
 {
@@ -774,7 +783,7 @@ The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-p
 
 ### `glob`
 
-Find files whose paths match a glob pattern. Returns matching file paths — never directories — including hidden and ignored files (VCS metadata directories are excluded). Up to 100 paths come back in modification-time order; a larger result instead returns 100 paths sampled across top-level entries, and reports where the complete sorted list was saved.
+Find files whose paths match a glob pattern. Returns matching file paths — never directories — including hidden and ignored files (VCS metadata directories are excluded). Up to 100 paths come back in modification-time order; a larger result instead returns 100 paths sampled across top-level entries, says so, and reports where the complete sorted list was saved. This tool does not enumerate directory entries.
 
 ```json
 {
@@ -799,7 +808,7 @@ Source: [`packages/fs/tool-fs-search/src/index.ts`](../packages/fs/tool-fs-searc
 
 ### `grep`
 
-Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. Returns the first 250 matches inline; a capped result reports where the complete match list was saved.
+Search file contents with a ripgrep regular expression. Returns matching lines with line numbers, grouped by file. Returns the first 250 matches inline; a capped result reports where the complete match list was saved. Use read on a matched file for surrounding context.
 
 ```json
 {
@@ -999,7 +1008,7 @@ The six terminal tools are opt-in and complement one-shot shell/filesystem tools
 
 ### `create_goal`
 
-Create one persisted same-session goal for the current direct human long-running request. Infer objective without ask. Not for trivial single-turn work; rejects non-human and subagent authority.
+Create one persisted same-session completion goal when the current direct human request is a long-running objective that should continue across autonomous goal rounds. You may infer that intent without requiring the user to say "create a goal". Do not use this for trivial single-turn work. Execution rejects non-human and subagent authority.
 
 ```json
 {
@@ -1024,7 +1033,7 @@ Source: [`packages/goal/tool-goal/src/index.ts`](../packages/goal/tool-goal/src/
 
 ### `get_goal`
 
-Read current same-session goal: exact id/revision, objective, phase, completed continuation rounds, round limit, blocker reason if present, and next continuation armed. Call before update_goal.
+Read the current same-session goal, including its exact id/revision, objective, phase, completed continuation rounds, round limit, blocker reason when present, and whether another continuation is armed. Call this before updating a goal.
 
 ```json
 {
@@ -1037,7 +1046,7 @@ Source: [`packages/goal/tool-goal/src/index.ts`](../packages/goal/tool-goal/src/
 
 ### `update_goal`
 
-Update exact current revision. edit/pause/resume require direct top-level human request; auto continuation allows complete/blocked. blocked rejected before minimum rounds; model judges same condition persisted, explains in blocked_reason.
+Update the exact current goal revision. edit, pause, and resume require a direct top-level human request. During an automatic continuation of the current goal, complete and blocked are also allowed. blocked is rejected before the configured minimum round count; the model remains responsible for judging that the same condition persisted across those rounds and must explain it in blocked_reason.
 
 ```json
 {
@@ -1093,7 +1102,7 @@ create, edit, pause, and resume require direct-human root authority; complete an
 
 ### `schedule_create`
 
-Create one current-session reminder; prompt non-empty; exactly one selector: after_seconds positive safe-int delay, at strict offset date-time or local date/time object, every_seconds positive safe-int >=300. Fixed-rate: creation-aligned, skip missed, merge one latest per overdue rule. Session-local delivery: runs only while session live, else overdue until resumed.
+Create one reminder in the current session. Supply a non-empty prompt and exactly one selector: a positive safe-integer after_seconds delay, at as a strict offset date-time or local date/time object, or safe-integer every_seconds of at least 300. Fixed-rate reminders stay creation-aligned, skip missed occurrences, and batch one latest occurrence per overdue rule. Delivery is session-local: the reminder runs on time only while this session is live and otherwise becomes overdue until the session is resumed.
 
 ```json
 {
@@ -1150,7 +1159,7 @@ Source: [`packages/schedule/schedule/src/tools.ts`](../packages/schedule/schedul
 
 ### `schedule_delete`
 
-Delete one active reminder in current session by exact id from schedule_create/schedule_list. Unknown or already-finished ids return deleted false.
+Delete one active reminder in the current session by the exact id returned by schedule_create or schedule_list. Unknown or already-finished ids return deleted false.
 
 ```json
 {
@@ -1171,7 +1180,7 @@ Source: [`packages/schedule/schedule/src/tools.ts`](../packages/schedule/schedul
 
 ### `schedule_list`
 
-List active reminders in current session in creation order: exact id, UTC target, scheduled/overdue state, session-local delivery mode.
+List every active reminder in the current session in creation order, including its exact id, UTC target, scheduled or overdue state, and session-local delivery mode.
 
 ```json
 {
@@ -1238,7 +1247,7 @@ The lsp tool keeps provider selection and language-server subprocesses behind ct
 
 ### `ralph`
 
-Run a foreground fresh-agent Ralph loop toward one immutable objective. Use only when the direct human explicitly asks for Ralph or fresh-agent iteration. Each round opens a new child with no parent conversation or prior child session; the shared workspace is long-term memory, and only a bounded structured report crosses rounds. Returns when a worker reports completion or a concrete blocker, or at the round limit. Ordinary long-running same-session work belongs to goal tools.
+Run a foreground fresh-agent Ralph loop toward one immutable objective. Use only when the direct human explicitly asks for Ralph or fresh-agent iteration. Each round opens a new child with no parent conversation or prior child session; the shared workspace is long-term memory, and only a bounded structured report crosses rounds. The call returns when a worker reports completion or a concrete blocker, or at the round limit. Ordinary long-running same-session work belongs to goal tools.
 
 ```json
 {
@@ -1551,7 +1560,7 @@ Source: [`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subag
 
 ### `subagent`
 
-Delegate a self-contained task to a subagent working in its own context to offload focused, independent work — research, a scoped implementation, an analysis — without consuming this conversation's context. Returns its result, not its intermediate steps. Give a complete, standalone prompt: it does not see this conversation. Default: waits for the result. Set `run_in_background: true` to return a job id; collect with `job_output`, stop with `job_kill`.
+Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. Give it a complete, standalone prompt: it does not see this conversation. This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.
 
 ```json
 {
@@ -1587,7 +1596,7 @@ The registered delegation name is the load-time `toolName` config (default `suba
 
 ### `interrupt_agent`
 
-Request stopping a background agent's current turn by its agent id. Target may be a direct child or deeper descendant. Only the current turn stops: queued messages stay parked (a later send_message resumes them), spawned agents keep running, agent stays reusable. Returns on acceptance (may keep running briefly); interrupting an already-finished agent is an accepted no-op.
+Request cancellation of a background agent's current turn by its agent id. The target may be your direct child or a deeper agent created under you. Only the current turn stops: messages already queued for the agent stay parked until a later send_message, agents it started keep running, and the agent itself stays available for follow-ups. This call returns as soon as the stop request is accepted, so the target may keep running briefly; interrupting an agent that already finished is an accepted no-op.
 
 ```json
 {
@@ -1608,7 +1617,7 @@ Source: [`packages/subagent/tool-subagent-control/src/index.ts`](../packages/sub
 
 ### `list_agents`
 
-List your continuable background subagents by durable id and label; you are told when one finishes, not for polling. Status: running = working now, idle = between turns, ready = storage only (resumable, not terminal). Snapshot not a delivery promise — `send_message` is authoritative. scope children (default) = direct children; descendants = whole tree in pre-order with durable direct-parent session id + depth. `send_message` only depth-1; deeper `interrupt_agent`-only. Unreadable children reported as diagnostics.
+List your continuable background subagents by durable id and label. Use it to recall which ones you started, not to poll for completion — you are told when one finishes. Status comes from the live registry: running means the agent is working right now, idle means it is loaded but between turns (it may be waiting on agents it started), and ready means it exists only in storage — resumable, not terminal, and not a result waiting to be collected; a `send_message` steers a running child at its nearest step boundary or starts a turn for an idle or ready child, and a direct child remains a `send_message` candidate in every status. The snapshot is not a delivery promise — `send_message` performs the authoritative check and may still fail. Children that could not be read are reported as diagnostics instead of being silently dropped. Scope `descendants` walks the whole tree below you in stable pre-order, annotating each entry with its durable direct-parent session id and depth. You may use `send_message` only for depth-1 entries; deeper entries are candidates for `interrupt_agent` only.
 
 ```json
 {
@@ -1630,23 +1639,23 @@ Source: [`packages/subagent/tool-subagent-control/src/list-agents.ts`](../packag
 
 ### `send_message`
 
-Send a message to a background subagent by its id, continuing the same conversation. It becomes its next turn: if still working, waits until that turn finishes — cannot redirect in-flight work. Returns only delivery confirmation, no answer. Failure means the message was NOT delivered.
+Send a message to a direct continuable child by its agent id. If you are a resident continuable child, you may also target your direct parent. If the target is still working, the message steers its nearest step; if it is idle, the message starts a turn. This call returns no answer from the agent — only confirmation that the message was delivered. A failure means the message was NOT delivered.
 
 ```json
 {
   "type": "object",
   "properties": {
-    "subagent_id": {
+    "agent_id": {
       "type": "string",
-      "description": "The subagent id returned when the background subagent was started."
+      "description": "The agent id of your direct continuable child, or your direct parent when you are a resident continuable child."
     },
     "message": {
       "type": "string",
-      "description": "The message to deliver to the subagent."
+      "description": "The message to deliver to the agent."
     }
   },
   "required": [
-    "subagent_id",
+    "agent_id",
     "message"
   ]
 }
@@ -1655,33 +1664,6 @@ Send a message to a background subagent by its id, continuing the same conversat
 Source: [`packages/subagent/tool-subagent-control/src/index.ts`](../packages/subagent/tool-subagent-control/src/index.ts)
 
 The globally named control tools over continuable background subagents: provider-bound `tool-subagent` instances register distinct delegation tools, while this package registers `send_message` and `interrupt_agent` once, plus `list_agents` from its separately loaded `/list-agents` plugin (whose catalog rows use the sessionProjections and live Agent registries).
-
-<a id="deepseek-aidsh-tool-subagent-report"></a>
-
-## `@deepseek-ai/dsh-tool-subagent-report`
-
-### `report`
-
-Report content to the agent that started you: before finishing with a self-contained final result, and earlier for progress/findings that change its next action. It shares your workspace but not your transcript, tool output, or reasoning — finishing is not a result. Never ends your turn; only your direct parent receives it. A failed call may still have arrived; do not blindly repeat it.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "output": {
-      "type": "string",
-      "description": "Actionable content for your parent; summarize conclusions and reference relevant shared paths."
-    }
-  },
-  "required": [
-    "output"
-  ]
-}
-```
-
-Source: [`packages/subagent/tool-subagent-report/src/index.ts`](../packages/subagent/tool-subagent-report/src/index.ts)
-
-Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently.
 
 <a id="deepseek-aidsh-tool-jobs"></a>
 
@@ -1727,7 +1709,7 @@ Source: [`packages/jobs/tool-jobs/src/index.ts`](../packages/jobs/tool-jobs/src/
 
 ### `job_output`
 
-Read a background job. Stream jobs return output since the last read; final-output jobs return their result after settlement. Every response ends with `[status: ...]`. Non-blocking unless `wait: true` (waits up to the configured cap).
+Read a background job. Stream jobs return only output since the previous read; final-output jobs return their result after settlement. Every response ends with `[status: ...]`. Reads are non-blocking unless `wait: true`, which waits up to the configured cap.
 
 ```json
 {
@@ -1759,32 +1741,6 @@ The kind-agnostic background-job controller: background bash commands, PTY sends
 <a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
-
-### `followup_task`
-
-Send a durable follow-up task to another Team member and start a turn when needed.
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "target": {
-      "type": "string",
-      "description": "Team member name, or lead."
-    },
-    "message": {
-      "type": "string",
-      "description": "Self-contained message for the target."
-    }
-  },
-  "required": [
-    "target",
-    "message"
-  ]
-}
-```
-
-Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
 
 ### `interrupt_agent`
 
@@ -1822,7 +1778,7 @@ Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/exper
 
 ### `send_message`
 
-Send durable information to another Team member without starting an idle member.
+Send one durable message to another Team member. A running target receives it at the nearest step boundary; an idle target starts a turn; an inactive teammate cold-resumes.
 
 ```json
 {
@@ -2054,7 +2010,7 @@ Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/exper
 
 ### `wait_agent`
 
-Wait for the next teammate status, mailbox, or shared-task change after this call starts. Never wakes inactive members; returns noProgress immediately when none is running or provisioning. Re-list after wakeup or timeout instead of polling.
+Wait for the next teammate status, mailbox, or shared-task change after this call starts. This never wakes inactive members and returns noProgress immediately when no other member is running or provisioning. Re-list after wakeup or timeout instead of polling.
 
 ```json
 {
@@ -2070,7 +2026,7 @@ Wait for the next teammate status, mailbox, or shared-task change after this cal
 
 Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
 
-All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names.
+All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names.
 
 <a id="deepseek-aidsh-tool-todo"></a>
 
@@ -2078,7 +2034,7 @@ All ten tools are scoped to implicit Team Leads and durable teammates. The shipp
 
 ### `todo_write`
 
-Record a structured task list for the current work. Send the ENTIRE list every call — it REPLACES the previous list (no partial updates, no per-item edits). Add one todo per concrete step to plan multi-step work and show progress. Mark every todo being actively worked on `in_progress` — several at once when work genuinely runs in parallel (e.g. concurrent subagents or background commands), one for sequential work; while work remains, at least one task should be `in_progress`. Mark a todo `completed` the moment it is done (do not batch); allow no `in_progress` item only once all work is complete. Skip for trivial one-step tasks. Statuses: `pending` (not started), `in_progress` (now), `completed` (finished).
+Record and update a structured task list for the current work. Send the ENTIRE list every call — it REPLACES the previous list (there are no partial updates, no per-item edits). Use it to plan multi-step work and show progress: add one todo per concrete step before you start. Mark every todo being actively worked on `in_progress` — several at once when work genuinely runs in parallel (e.g. concurrent subagents or background commands), one for sequential work; while work remains, at least one task should be `in_progress`. Mark a todo `completed` the moment it is done (do not batch completions), and allow no `in_progress` item only once all work is complete. Skip the list for trivial single-step tasks. Statuses: `pending` (not started), `in_progress` (being worked on now), `completed` (finished).
 
 ```json
 {
@@ -2128,19 +2084,19 @@ todo_write is session-owned state; UIs render the latest todo/write event as a c
 
 ### `workflow`
 
-Run a JavaScript workflow script that orchestrates subagents at scale — audits, migrations, multi-angle research, adversarial verification — where you write orchestration as script instead of delegating turn by turn.
+Run a JavaScript workflow script that orchestrates subagents at scale. Use this for work that fans out across many independent pieces — an audit over many files, a migration, multi-angle research, adversarial verification of findings — where you write the orchestration as a script instead of delegating turn by turn.
 
-The workflow's identity rides the `meta` parameter as JSON: required `name` (short kebab-case) and `description` strings, optional `whenToUse` string and `phases` array (`{title, detail?, provider?, model?}`). The `script` is plain JavaScript body ONLY (NOT TypeScript; NO `export const meta` — meta is a parameter, not code), top-level await allowed; end with `return <value>` (must be JSON-serializable; that is this tool's result).
+The workflow's identity rides the `meta` parameter as JSON: required `name` (short kebab-case) and `description` strings, optional `whenToUse` string and `phases` array (`{title, detail?, provider?, model?}`). The `script` parameter is the plain JavaScript body ONLY (NOT TypeScript, and NO `export const meta` statement — meta is a parameter, not code), running with top-level await; end with `return <value>` — the value must be JSON-serializable and is this tool's result.
 
 Script-body hooks:
-- `agent(prompt, opts?)` — run one subagent to completion; resolves `null` on child failure (filter with `.filter(Boolean)`). No `opts.schema`: yields child's final text; with `opts.schema` (JSON Schema with ONLY type/properties/required/additionalProperties/items/enum/const/oneOf): validated object. Other opts: `label`, `phase`, independent `provider`/`model` overrides (either may be provided alone). Anything else (`effort`/`isolation`/`agentType`) is rejected loudly.
-- `pipeline(items, ...stages)` — run each item through stages independently, NO barrier between stages; stage gets `(prev, item, index)`; a stage throw drops that item to `null` and skips its rest.
-- `parallel(thunks)` — run zero-arg functions concurrently and await ALL (barrier); a throwing thunk resolves to `null`.
-- `phase(title)` — start a progress phase; `log(message)` — narrate; `args` — this call's `args` input, verbatim.
+- `agent(prompt, opts?): Promise<any>` — run one subagent to completion. Without `opts.schema` it resolves to the child's final text; with `opts.schema` (an object-rooted JSON Schema using ONLY type/properties/required/additionalProperties/items/enum/const/oneOf — no pattern/format/numeric bounds) it resolves to the validated object. Resolves `null` when the child fails (filter with `.filter(Boolean)`). Other opts: `label` (display), `phase` (progress group), and independent `provider`/`model` LLM target overrides (either may be provided alone). Anything else (`effort`/`isolation`/`agentType`) is rejected loudly.
+- `pipeline(items, ...stages): Promise<any[]>` — run each item through the stages independently with NO barrier between stages (prefer this for multi-stage work). Each stage receives `(prev, item, index)`. An ordinary stage throw drops that ITEM to `null` and skips its remaining stages.
+- `parallel(thunks): Promise<any[]>` — run zero-argument functions concurrently and await ALL of them (a barrier; use only when a stage genuinely needs every prior result together). A throwing thunk resolves to `null`.
+- `phase(title)` — start a progress phase; `log(message)` — narrate progress; `args` — the tool call's `args` input, verbatim.
 
-Misused hooks (bad args, unknown options, unsupported schemas, tripped caps) ALWAYS kill the script — never a per-item `null`.
+Misused hooks (bad arguments, unknown options, unsupported schemas, tripped caps) throw errors that ALWAYS kill the script — they never dissolve into a per-item `null`.
 
-Constraints: concurrency and total-agent caps apply; no filesystem/network/timers/Node.js APIs — agents do the work, script only coordinates. Foreground: returns when the whole script finishes.
+Constraints: concurrency and total-agent caps apply; no filesystem, network, timers, or Node.js APIs are provided — the agents do the work, the script only coordinates them. The run executes in the foreground: this call returns when the whole script finishes.
 
 ```json
 {

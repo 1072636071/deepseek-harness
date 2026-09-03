@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createConversationStore } from '../src/client/stores.ts'
+import { beforeEach, describe, expect, it } from 'vitest'
+import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import { createConversationStore, readConversationViewPreference } from '../src/client/stores.ts'
 
 const KEY = 'dsh.conversation'
 
@@ -30,12 +31,11 @@ describe('createConversationStore', () => {
     expect(store.store.getSnapshot().viewRequest).toBeNull()
   })
 
-  it('persists per Session scope and clears the persisted value', async () => {
+  it('persists per Session scope and clears the persisted value', () => {
     const first = createConversationStore().create('sess-1')
     first.actions.setDraft('draft for one')
     first.actions.setView('chat')
-    // Write-back is frame-batched; settle before reading the storage side.
-    await vi.waitFor(() => { expect(localStorage.getItem(`${KEY}.sess-1`)).not.toBeNull() })
+    expect(localStorage.getItem(`${KEY}.sess-1`)).not.toBeNull()
     expect(localStorage.getItem(`${KEY}.sess-2`)).toBeNull()
 
     const restored = createConversationStore().create('sess-1')
@@ -54,5 +54,15 @@ describe('createConversationStore', () => {
     const second = handle.create()
     first.actions.setDraft('only first')
     expect(second.store.getSnapshot().draft).toBe('')
+  })
+
+  it('reads only a usable persisted View preference', () => {
+    const sessionId = 'sess-1' as SessionId
+    const store = createConversationStore().create(sessionId)
+    store.actions.setView('trajectory')
+    expect(readConversationViewPreference(sessionId)).toBe('trajectory')
+
+    localStorage.setItem(`${KEY}.${sessionId}`, '{invalid')
+    expect(readConversationViewPreference(sessionId)).toBeNull()
   })
 })

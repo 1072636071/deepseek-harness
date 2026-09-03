@@ -3,7 +3,8 @@
  * @module @deepseek-ai/dsh-schedule
  */
 
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionLogOffset } from '@deepseek-ai/dsh-session'
+import type { SessionEvent, SessionLogOffset as SessionLogOffsetType } from '@deepseek-ai/dsh-session'
 import type {
   AfterScheduleRecord,
   AtInput,
@@ -567,70 +568,43 @@ function dispatchedRecord(record: ScheduleRecord, change: DecodedDispatch): Sche
 }
 
 /**
- * Fold the package-owned stream after the durable fork seed boundary.
- * @param events - Complete ordered session log or candidate-extended log.
- * @param seedLength - Inherited prefix length excluded from child ownership.
- * @returns Active records and all previously used ids.
+ * Apply already-decoded Schedule changes to one complete fold value.
+ *
+ * This is the single transition authority shared by full-log replay and the
+ * incremental Session projection. One mutable Map/Set pair spans the whole
+ * batch; the returned arrays are materialized and frozen once.
+ * @param folded - complete active records and used-id history before the changes.
+ * @param changes - strictly decoded durable mutations in log order.
+ * @returns the complete fold value after every mutation.
  */
-export function foldScheduleEvents(
-  events: readonly SessionEvent[],
-  seedLength = 0,
+export function applyScheduleChanges(
+  folded: FoldedSchedules,
+  changes: Iterable<ScheduleChange>,
 ): FoldedSchedules {
-  if (!Number.isSafeInteger(seedLength) || seedLength < 0 || seedLength > events.length) {
-    throw new ScheduleLogError('schedule seedLength must be within the supplied event log')
-  }
-  const state = emptyScheduleFold()
-  applyScheduleEvents(state, events, seedLength, events.length)
-  return snapshotScheduleFold(state)
-}
-
-/** Mutable fold accumulator behind {@link foldScheduleEvents} and its incremental driver. */
-export interface ScheduleFoldState {
-  active: Map<ScheduleIdType, ScheduleRecord>
-  seen: Set<ScheduleIdType>
-}
-
-/** An empty fold accumulator for a session-local suffix. */
-export function emptyScheduleFold(): ScheduleFoldState {
-  return { active: new Map(), seen: new Set() }
-}
-
-/**
- * Apply `events[from..to)` onto the accumulator. Purely incremental: the same
- * per-event validation the whole-log fold performs, so an incrementally
- * maintained state is indistinguishable from a full refold.
- */
-export function applyScheduleEvents(
-  state: ScheduleFoldState,
-  events: readonly SessionEvent[],
-  from: number,
-  to: number,
-): void {
-  for (let index = from; index < to; index += 1) {
-    const event = events[index]
-    if (event === undefined || event.type !== 'schedule/change') continue
-    const change = decodeScheduleChange(event.data)
+  const active = new Map(folded.active.map(record => [record.id, record]))
+  const seen = new Set(folded.seenIds)
+  for (const change of changes) {
     switch (change.operation) {
       case 'create':
-        if (state.seen.has(change.schedule.id)) {
+        if (seen.has(change.schedule.id)) {
           throw new ScheduleLogError(`schedule id ${JSON.stringify(change.schedule.id)} was reused`)
         }
-        state.seen.add(change.schedule.id)
-        state.active.set(change.schedule.id, change.schedule)
+        seen.add(change.schedule.id)
+        active.set(change.schedule.id, change.schedule)
         break
       case 'delete':
-        if (!state.active.delete(change.id)) {
+        if (!active.delete(change.id)) {
           throw new ScheduleLogError(`schedule delete targets inactive id ${JSON.stringify(change.id)}`)
         }
         break
       case 'dispatch': {
-        const record = state.active.get(change.id)
+        const record = active.get(change.id)
         if (record === undefined) {
           throw new ScheduleLogError(`schedule dispatch targets inactive id ${JSON.stringify(change.id)}`)
         }
         const next = dispatchedRecord(record, change)
-        if (next === undefined) state.active.delete(change.id)
-        else state.active.set(change.id, next)
+        if (next === undefined) active.delete(change.id)
+        else active.set(change.id, next)
         break
       }
       /* v8 ignore next 3 -- decodeScheduleChange returns a closed operation union. */
@@ -640,14 +614,37 @@ export function applyScheduleEvents(
       }
     }
   }
+  return Object.freeze({
+    active: Object.freeze([...active.values()]),
+    seenIds: Object.freeze([...seen]),
+  })
 }
 
-/** Freeze one point-in-time view of the accumulator. */
-export function snapshotScheduleFold(state: ScheduleFoldState): FoldedSchedules {
-  return Object.freeze({
-    active: Object.freeze([...state.active.values()]),
-    seenIds: Object.freeze([...state.seen]),
+/**
+ * Fold the package-owned stream after the durable fork seed boundary.
+ * @param events - Complete ordered session log or candidate-extended log.
+ * @param inheritedEventCount - Inherited prefix length excluded from child ownership.
+ * @returns Active records and all previously used ids.
+ */
+export function foldScheduleEvents(
+  events: readonly SessionEvent[],
+  inheritedEventCount: SessionLogOffsetType = SessionLogOffset(0),
+): FoldedSchedules {
+  if (!Number.isSafeInteger(inheritedEventCount)
+    || inheritedEventCount < 0
+    || inheritedEventCount > events.length) {
+    throw new ScheduleLogError('schedule inheritedEventCount must be within the supplied event log')
+  }
+  const initial: FoldedSchedules = Object.freeze({
+    active: Object.freeze([]),
+    seenIds: Object.freeze([]),
   })
+  const changes = function* (): Generator<ScheduleChange> {
+    for (const event of events.slice(inheritedEventCount)) {
+      if (event.type === 'schedule/change') yield decodeScheduleChange(event.data)
+    }
+  }
+  return applyScheduleChanges(initial, changes())
 }
 
 /**

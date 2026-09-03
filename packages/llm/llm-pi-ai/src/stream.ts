@@ -8,8 +8,9 @@
  * @module dsh-llm-pi-ai/stream
  */
 
-import { ToolCallId, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, LlmError, normalizeHttpFailureCode } from '@deepseek-ai/dsh-llm'
-import type { FinishReason, StreamChunk, TokenUsage } from '@deepseek-ai/dsh-llm'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, isContextWindowExceededError, isQuotaExceededError, LlmError, QUOTA_EXCEEDED_CODE } from '@deepseek-ai/dsh-llm'
+import type { FinishReason, StreamChunk, TokenUsage, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { isContextOverflow } from '@earendil-works/pi-ai'
 import type { AssistantMessage, AssistantMessageEvent, Usage as PiUsage } from '@earendil-works/pi-ai'
 import { toPiReplayState } from './replay.ts'
@@ -38,16 +39,15 @@ export function mapUsage(usage: PiUsage): TokenUsage {
 // wrapper a bare `terminated`, so we are left pattern-matching terse words here.
 // If pi-ai ever forwards the original Error (or a fetch/dispatcher hook that lets
 // us capture the cause ourselves), classify on `code`/`cause` instead of text.
-/**
- * Classify a flattened pi-ai failure message: the shared
- * {@link normalizeHttpFailureCode} classes in text-only mode, then this
- * provider's transport tail (timeouts, mid-stream truncation, socket drops).
- * @param message - the flattened provider failure text.
- * @returns the stable harness error code.
- */
-export function classifyPiAiError(message: string): string {
-  const shared = normalizeHttpFailureCode({ detail: message })
-  if (shared !== undefined) return shared
+function classifyPiAiError(message: string): string {
+  if (/\b(?:401|403)\b/.test(message)) return 'AUTH'
+  if (isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
+  if (/\b429\b|rate.?limit/i.test(message)) return 'RATE_LIMIT'
+  // A rejected request body (gateway or provider size cap): resending the
+  // same request cannot succeed, so it is invalid, not transient.
+  if (/\b413\b|failed to buffer the request body:\s*length limit exceeded|payload too large|request body too large/i.test(message)) return 'INVALID_REQUEST'
+  if (/\b400\b|invalid.?request/i.test(message)) return 'INVALID_REQUEST'
+  if (/\b5\d\d\b/.test(message)) return 'SERVER'
   if (/\btime(?:d)?\s*out\b|timeout/i.test(message)) return 'TIMEOUT'
   // A stream truncated before the provider's terminal event: each pi-ai provider
   // throws its own wording when the wire closes mid-response without a terminal
@@ -56,10 +56,6 @@ export function classifyPiAiError(message: string): string {
   // finish_reason`). The connection dropped mid-response, so this is a transport
   // truncation, not a model-level error.
   if (/stream ended (?:before|without)\b/i.test(message)) return 'TRANSPORT'
-  // pi-ai's OpenAI-completions adapter maps a non-standard gateway terminal
-  // `finish_reason: "network_error"` to the literal message matched here; the
-  // embedded underscore defeats the \b-bounded keyword match that follows.
-  if (/provider finish_reason:\s*network_error/i.test(message)) return 'TRANSPORT'
   if (/\b(?:network|connection|socket|fetch)\b|\bECONN[A-Z]+\b/i.test(message)
     || /\b(?:other side closed|HTTP2 request did not get a response|WebSocket closed unexpectedly)\b/i.test(message)
     // undici renders a mid-stream socket drop as a bare `terminated` (its
@@ -187,7 +183,7 @@ export async function* toStreamChunks(
         yield {
           type: 'tool-call-delta',
           index: event.contentIndex,
-          id: ToolCallId(known?.id ?? ''),
+          id: brandString<ToolCallId>(known?.id ?? ''),
           ...known?.name !== undefined && known.name.length > 0 ? { name: known.name } : {},
           argumentsDelta: event.delta,
         }
@@ -199,7 +195,7 @@ export async function* toStreamChunks(
           index: event.contentIndex,
           block: {
             type: 'tool-call',
-            id: ToolCallId(event.toolCall.id),
+            id: brandString<ToolCallId>(event.toolCall.id),
             name: event.toolCall.name,
             // pi-ai hands back the PARSED arguments; the harness vocabulary
             // keeps the raw string.

@@ -11,8 +11,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import { assertNever } from '@deepseek-ai/dsh-llm'
 import type { SubagentDescendantListEntry, SubagentListEntry } from '@deepseek-ai/dsh-subagent'
+import { assertNever } from '@deepseek-ai/dsh-util-values'
 
 export const name = 'tool-subagent-list-agents'
 export const inject = ['tools', 'subagents', 'agents']
@@ -92,12 +92,18 @@ export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'list_agents',
     description:
-      'List your continuable background subagents by durable id and label; you are told when one finishes, '
-      + 'not for polling. Status: running = working now, idle = between turns, ready = storage only '
-      + '(resumable, not terminal). Snapshot not a delivery promise — `send_message` is authoritative. '
-      + 'scope children (default) = direct children; descendants = whole tree in pre-order with durable '
-      + 'direct-parent session id + depth. `send_message` only depth-1; deeper `interrupt_agent`-only. '
-      + 'Unreadable children reported as diagnostics.',
+      'List your continuable background subagents by durable id and label. Use it to recall which ones '
+      + 'you started, not to poll for completion — you are told when one finishes. Status comes from the live '
+      + 'registry: running means the agent is working right now, idle means it is loaded but between turns '
+      + '(it may be waiting on agents it started), and ready means it exists only in storage — resumable, not '
+      + 'terminal, and not a result waiting to be collected; a `send_message` steers a running child at its nearest '
+      + 'step boundary or starts a turn for an idle or ready child, and a direct child remains a `send_message` '
+      + 'candidate in every status. The snapshot is not a delivery '
+      + 'promise — `send_message` performs the authoritative check and may still fail. Children that could '
+      + 'not be read are reported as diagnostics instead of being silently dropped. Scope `descendants` '
+      + 'walks the whole tree below you in stable pre-order, annotating each entry with its durable direct-parent '
+      + 'session id and depth. You may use `send_message` only for depth-1 entries; deeper entries are '
+      + 'candidates for `interrupt_agent` only.',
     parameters: {
       scope: {
         type: 'string',

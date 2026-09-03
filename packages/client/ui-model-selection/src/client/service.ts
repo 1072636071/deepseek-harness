@@ -16,10 +16,8 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import { ModelCatalogDirectory } from './catalog.ts'
 import { ModelDirectory } from './directory.ts'
-import { ModelVisibilityDirectory } from './visibility.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -33,31 +31,12 @@ interface LiveState {
   readonly directories: Map<SessionId, ModelDirectory>
 }
 
-/** The cordis service surfaces the resolver constructor reads to build its stores. */
-export interface ModelDirectoryResolverFaces {
-  /** Session wire and the shared LLM/settings/connection faces it reads. */
-  remote: {
-    session: import('@deepseek-ai/dsh-api-remotes/client').ClientRemote['session']
-    llm: Pick<import('@deepseek-ai/dsh-api-remotes/client').ClientRemote['llm'], 'listConfigurableProviders'>
-  }
-  /** The settings scope's describe face over the shared mirror. */
-  settingsScope: {
-    describe(): import('@deepseek-ai/dsh-client-ui-settings/client').SettingsDescribeFace
-  }
-}
-
 /** The `ctx.modelDirectories` session model-selection service. */
 export class ModelDirectoryResolver extends Service {
-  static inject = ['sessions', 'remote', 'remote.session', 'remote.llm', 'settingsScope']
+  static inject = ['sessions', 'remote', 'remote.session']
 
   private readonly live: LiveState = { directories: new Map() }
   private readonly catalog: ModelCatalogDirectory
-  private visibility: ModelVisibilityDirectory | null = null
-
-  /** The shared provider-model-visibility directory (settings-derived hidden set). */
-  get modelVisibility(): ModelVisibilityDirectory | null {
-    return this.visibility
-  }
 
   /** Localized composer-block copy; this plugin owns the string it raises. */
   private readonly blockReason: () => string
@@ -66,34 +45,16 @@ export class ModelDirectoryResolver extends Service {
    * @param ctx - owning root context (the service registers itself as `models`).
    * @param config - the bound translator for this plugin's own dictionary.
    */
-  constructor(ctx: Context & ModelDirectoryResolverFaces, config: { blockReason: () => string }) {
+  constructor(ctx: Context, config: { blockReason: () => string }) {
     super(ctx, 'modelDirectories')
     this.blockReason = config.blockReason
-    this.catalog = new ModelCatalogDirectory(ctx.remote.session)
-    // The visibility directory derives the settings-hidden set from the
-    // configurable-provider directory and the settings mirror, publishing it
-    // on its own store. Consumers (the composer seat) subscribe to that store
-    // directly, so a hidden-set change needs no catalog reload: the catalog
-    // carries no visibility, and provider-directory changes already refresh
-    // the catalog through their own forwarding events.
-    this.visibility = new ModelVisibilityDirectory(
-      () => ctx.remote.llm.listConfigurableProviders().then(
-        response => response.ok ? response.value : Promise.reject(new Error(response.error.message)),
-      ),
-      ctx.settingsScope.describe(),
-    )
-    // Unsubscribe the mirror and stop refresh once this service's fiber goes:
-    // the visibility directory owns no independent teardown site.
-    ctx.effect(() => () => { this.visibility?.dispose() }, 'ui-model-selection: visibility teardown')
+    this.catalog = new ModelCatalogDirectory(ctx)
     void this.catalog.load().catch(() => { /* selectors expose the shared error */ })
     ctx.on('connection/reset', () => {
       this.catalog.resetGeneration()
       for (const directory of this.live.directories.values()) directory.resetConnected()
     })
-    ctx.remote.$on('llm/adapters-updated', () => {
-      this.catalog.refresh()
-      void this.visibility?.refresh()
-    })
+    ctx.remote.$on('llm/adapters-updated', () => { this.catalog.refresh() })
     ctx.remote.$on('settings/document-updated', () => { this.catalog.refresh() })
     ctx.remote.$on('credentials/reference-updated', () => { this.catalog.refresh() })
   }

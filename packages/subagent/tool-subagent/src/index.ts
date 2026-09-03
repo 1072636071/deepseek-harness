@@ -15,7 +15,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { Agent, AgentOptions } from '@deepseek-ai/dsh-agent'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
+import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import {
   assertSubagentMaxDepth,
   parentAgentOptionsForDelegation,
@@ -23,7 +24,6 @@ import {
 } from '@deepseek-ai/dsh-subagent'
 import type { SubagentProvider, SubagentResult, SubagentRun } from '@deepseek-ai/dsh-subagent'
 import type { JobOutcome } from '@deepseek-ai/dsh-jobs'
-import { FIRST_PARTY_SECTION_ORDER } from '@deepseek-ai/dsh-system-prompt'
 import {
   assertAllowedModelSelection,
   hasConfiguredLlmSelection,
@@ -36,14 +36,12 @@ import { registerListSubagentModels } from './list-models.ts'
 import type {} from './model-selection-settings.ts'
 import {
   recordSubagentModelSelection,
+  subagentModelSelectionProjectionDefinition,
   subagentModelSelectionPolicy,
 } from './model-selection-state.ts'
 
 export const name = 'tool-subagent'
-export const inject = ['tools', 'subagents', 'systemPrompt']
-
-/** Prompt order after bounded delegation policy and before child reporting. */
-const SUBAGENT_SECTION_ORDER = FIRST_PARTY_SECTION_ORDER.TOOL_SUBAGENT
+export const inject = ['tools', 'subagents', 'systemPrompt', 'sessionProjections']
 
 /** Config: which registered provider this tool delegates to, plus child defaults. */
 export interface Config {
@@ -253,10 +251,11 @@ function providerWording(inheritsConversation: boolean): { description: string; 
   if (inheritsConversation) {
     return {
       description:
-        'Delegate a task to a subagent that inherits this conversation: uses all completed turns so far '
-        + '(not the current in-flight turn). For subtasks building on its context — analysis, review, '
-        + 'continuation — without consuming this conversation\'s context. Returns its result, not its '
-        + 'intermediate steps.',
+        'Delegate a task to a subagent that inherits this conversation: a child agent seeded with all '
+        + 'completed turns so far (it does not see the current in-flight turn). Use this when the subtask '
+        + 'builds on this conversation\'s context — a follow-up analysis, '
+        + 'a review, a continuation — without consuming this conversation\'s context for the work itself. '
+        + 'You receive its result, not its intermediate steps.',
       promptDescription:
         'The task for the subagent. It already sees this conversation\'s completed turns, so build on them '
         + 'freely and state only what is new.',
@@ -264,10 +263,11 @@ function providerWording(inheritsConversation: boolean): { description: string; 
   }
   return {
     description:
-      'Delegate a self-contained task to a subagent working in its own context to offload focused, '
-      + 'independent work — research, a scoped implementation, an analysis — without consuming this '
-      + 'conversation\'s context. Returns its result, not its intermediate steps. Give a complete, standalone '
-      + 'prompt: it does not see this conversation.',
+      'Delegate a self-contained task to a subagent (a separate agent that works in its own context) '
+      + 'to offload focused, independent work — research, a scoped '
+      + 'implementation, an analysis — so it does not consume this conversation\'s context. The subagent '
+      + 'returns its result, not its intermediate steps. Give it a '
+      + 'complete, standalone prompt: it does not see this conversation.',
     promptDescription:
       'The complete, self-contained task for the subagent. It does not share this '
       + 'conversation\'s context, so include everything it needs.',
@@ -316,6 +316,7 @@ export function apply(ctx: Context, config: Config): void {
   const toolName = config.toolName ?? 'subagent'
 
   const modelSelectionCapable = config.modelSelectionSettings === true
+  ctx.sessionProjections.register(subagentModelSelectionProjectionDefinition)
 
   const assertSubagentProviderConfiguration = (subagentProvider: SubagentProvider): void => {
     if (typeof config.maxDepth === 'number' && !subagentProvider.capabilities.depthLimit) {
@@ -375,8 +376,8 @@ export function apply(ctx: Context, config: Config): void {
           // a separately installed capability, so this promise holds whenever the
           // continuable background path is reachable at all.
           ? continuable
-            ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When it settles, the runtime sends the parent a notice with its outcome; `send_message` starts a later turn. Set `run_in_background: false` only when your next action needs the result.'
-            : ' Default: waits for the result. Set `run_in_background: true` to return a job id; collect with `job_output`, stop with `job_kill`.'
+            ? ' This tool runs in the background by default, immediately returns a durable subagent id, and keeps the child conversation available for later turns. When that run settles, the runtime sends the parent a notice containing its outcome and any final assistant message; `send_message` steers the child\'s nearest step while it is running and starts a turn while it is idle. Set `run_in_background: false` only when your next action depends on receiving the result.'
+            : ' This call waits for the result by default. Set `run_in_background: true` to return a job id; collect with `job_output` and stop with `job_kill`.'
           : ' This call waits for the subagent and returns its result.') + choiceDescription,
         parameters: {
           description: {
@@ -589,7 +590,7 @@ export function apply(ctx: Context, config: Config): void {
       // absent, and the registration itself stays owned by this plugin fiber.
       runtimeCtx.systemPrompt.section({
         name: `tool:${toolName}`,
-        order: SUBAGENT_SECTION_ORDER,
+        order: runtimeCtx.systemPrompt.getSectionOrder('TOOL_SUBAGENT'),
         text: context => mounted === undefined || runtimeCtx.tools.get(toolName, context.scope) === undefined
           ? ''
           : `Use ${toolName} in the background by default. Start independent delegations together in one assistant message and continue useful work while they run. Set \`run_in_background: false\` only when your next action depends on that subagent's result. When a background run settles, the runtime sends you a notice containing its outcome and any final assistant message.`,
@@ -615,20 +616,26 @@ export function apply(ctx: Context, config: Config): void {
   }
 
   const selectForAgent = (agent: NonNullable<Context['agent']>): ModelSelectionPolicy | undefined => {
-    let allowedModels = subagentModelSelectionPolicy(agent.session)
+    const freshSession = agent.session.firstLiveSeq === 0
+      && agent.session.eventAt(SessionSeq(0))?.type !== 'session/end-seed'
+    let allowedModels = subagentModelSelectionPolicy(ctx.sessionProjections, agent.session)
     if (allowedModels === undefined) {
       const parentId = agent.session.header.origin === 'subagent'
         ? agent.session.header.parentSession
         : undefined
       if (parentId !== undefined) {
         const parent = ctx.get('agents')?.get(parentId)
-        allowedModels = parent === undefined ? undefined : subagentModelSelectionPolicy(parent.session)
-      } else if (agent.session.firstLiveSeq === 0) {
+        allowedModels = parent === undefined
+          ? undefined
+          : subagentModelSelectionPolicy(ctx.sessionProjections, parent.session)
+      } else if (freshSession) {
         const current = settings.current()
         allowedModels = current.enabled ? current.allowedModels : undefined
       }
     }
-    if (allowedModels !== undefined) recordSubagentModelSelection(agent.session, allowedModels)
+    if (allowedModels !== undefined) {
+      recordSubagentModelSelection(ctx.sessionProjections, agent.session, allowedModels)
+    }
     return allowedModels === undefined ? undefined : { routes: allowedModels }
   }
 

@@ -8,15 +8,13 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { EveryScheduleRecord, OneShotScheduleRecord } from './types.ts'
 import {
-  applyScheduleEvents,
-  emptyScheduleFold,
-  snapshotScheduleFold,
+  foldScheduleEvents,
   renderEveryReminderBatchFraming,
   renderReminderFraming,
   resolveEveryOccurrence,
   ScheduleLogError,
 } from './domain.ts'
-import type { FoldedSchedules, ScheduleFoldState } from './domain.ts'
+import type { FoldedSchedules } from './domain.ts'
 import { flushSchedulePersistence } from './persistence.ts'
 import { runScheduleTransaction } from './transaction.ts'
 
@@ -204,41 +202,12 @@ export class ScheduleRuntime {
     )
   }
 
-  /**
-   * Incremental fold cache: the accumulator state after consuming
-   * `events[..seq)` of the session suffix at `seedLength`. Every wake re-folds
-   * (preflight + claim), so without this each wake rescanned the WHOLE event
-   * log twice — cost growing with the session, independent of the schedule
-   * count. A replaced or shrunk log falls back to a full refold. The cache is
-   * valid only while the runtime keeps one session whose log replacement (a
-   * reseeded session) also changes `header.seedLength` — the precondition the
-   * runtime's agent binding provides.
-   */
-  private foldCache: {
-    seedLength: number
-    seq: number
-    state: ScheduleFoldState
-  } | undefined
-
   /** Fold the current exact runtime suffix and contain a corrupt durable stream. */
   private readFolded(): FoldedSchedules | undefined {
     try {
-      const events = this.agent.session.events
-      const seedLength = this.agent.session.header.seedLength ?? 0
-      const cache = this.foldCache
-      // A replaced or shrunk log (new seed, refolded session) restarts the fold.
-      const resumable = cache !== undefined && cache.seedLength === seedLength && cache.seq <= events.length
-      const state = resumable ? cache.state : emptyScheduleFold()
-      const from = resumable ? cache.seq : seedLength
-      if (!Number.isSafeInteger(from) || from < 0 || from > events.length) {
-        throw new ScheduleLogError('schedule seedLength must be within the supplied event log')
-      }
-      applyScheduleEvents(state, events, from, events.length)
-      this.foldCache = { seedLength, seq: events.length, state }
-      return snapshotScheduleFold(state)
+      return foldScheduleEvents(this.agent.session.ownEvents())
     } catch (error: unknown) {
       this.faulted = true
-      this.foldCache = undefined
       const detail = error instanceof ScheduleLogError ? error.message : renderThrown(error)
       this.ctx.logger.warn(`schedule: corrupt schedule log for agent "${this.agent.id}": ${detail}`)
       return undefined
