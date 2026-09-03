@@ -25,4 +25,10 @@ export interface ModelSelectInjected {
    * @returns whether the host accepted the selection.
    */
   select: (selection: ModelSelection) => Promise<boolean>
+  /**
+   * Open the settings panel on the Models section. Absent when no settings
+   * navigation capability is registered (`ctx.uiSettingsNav`): the seat then
+   * renders no model-config row rather than a dead control.
+   */
+  openModelConfig?: (() => void) | undefined
 }

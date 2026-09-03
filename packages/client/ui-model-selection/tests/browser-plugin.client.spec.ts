@@ -410,4 +410,22 @@ describe('ui-model-selection dual entry', () => {
     await Promise.resolve()
     expect(b.calls).toEqual({ models: 2, select: 0 })
   })
+
+  it('withholds the config navigation callback when no settings-nav capability is registered', async () => {
+    const b = await bench()
+    b.mint('s1')
+    const face = b.seat().inject!(sid('s1'))
+    expect(face.openModelConfig).toBeUndefined()
+  })
+
+  it('lands 「模型配置」 on the Models section through ctx.uiSettingsNav', async () => {
+    const b = await bench()
+    b.mint('s1')
+    const openSection = vi.fn()
+    b.ctx.provide('uiSettingsNav', { openSection })
+    const face = b.seat().inject!(sid('s1'))
+    expect(face.openModelConfig).toBeTypeOf('function')
+    face.openModelConfig?.()
+    expect(openSection).toHaveBeenCalledWith('models')
+  })
 })

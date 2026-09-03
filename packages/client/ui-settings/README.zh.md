@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-settings` 是 dsh Web 客户端每个偏好设置界面都依赖的底座：功能插件绑定一个命名空间，即可在宿主设置文档中存储或编辑自己的偏好设置行，而无需重新实现传输层或 schema 处理。`ctx.settingsScope` 从共享文档镜像派生按命名空间的 scope，并以 revision 设栅，因此来自另一界面的并发写入会被拒绝，而不是被静默覆盖；`ctx.settingsSchema` 同步重建并校验 schema、编辑不可变路径。它声明设置界面所填充的 slot 类型——`settings.trigger`/`settings.header`/`settings.close`（界面框架）、`settings.action`（有序标题栏操作）、`settings.section`（每项功能一页）、`settings.plugins.tab` 与 `settings.onboarding`——而自身不渲染任何内容。由于它不依赖任何 `ui-*` 呈现包，任何持有偏好设置的功能都能够到它；设置外壳本身位于 ui-settings-general。
+`dsh-client-ui-settings` 是 dsh Web 客户端每个偏好设置界面都依赖的底座：功能插件绑定一个命名空间，即可在宿主设置文档中存储或编辑自己的偏好设置行，而无需重新实现传输层或 schema 处理。`ctx.settingsScope` 从共享文档镜像派生按命名空间的 scope，并以 revision 设栅，因此来自另一界面的并发写入会被拒绝，而不是被静默覆盖；`ctx.settingsSchema` 同步重建并校验 schema、编辑不可变路径。它声明设置界面所填充的 slot 类型——`settings.trigger`/`settings.header`/`settings.close`（界面框架）、`settings.action`（有序标题栏操作）、`settings.section`（每项功能一页）、`settings.plugins.tab` 与 `settings.onboarding`——而自身不渲染任何内容。`ctx.uiSettingsNav` 是一条跨插件能力：它发布一条打开请求，由外壳读取后把面板定位到某个分段，于是设置界面之外的入口（composer 的模型位）无需依赖外壳即可跳转过去。由于它不依赖任何 `ui-*` 呈现包，任何持有偏好设置的功能都能够到它；设置外壳本身位于 ui-settings-general。
 
 ## 目录
 
@@ -34,6 +34,10 @@ kind: "package-reference"
 ### 填充设置 slot
 
 设置界面会注册进本包声明的 slot 类型。外壳（`sidebar.settings` 占位方、导航、界面框架）位于 ui-settings-general；功能页面注册 `settings.section` 贡献；「插件」分区承载 `settings.plugins.tab` 页面；首次使用引导步骤注册 `settings.onboarding`。跨命名空间的表面（schema 内省、已服务命名空间目录、`hasDocument`）通过 `ctx.settingsScope.describe()` 读同一面镜像。
+
+### 从别处打开某个分段
+
+设置界面之外的入口用 `settings.section` 的键（例如 Models 页的 `'models'`）调用 `ctx.uiSettingsNav.openSection(id)`。它在该服务的 store 上发布一条单调递增的打开请求；外壳经其 inject 面读取这个 store，于是打开面板并定位到指定分段，若该分段已消失则回退到第一行。底座只持有这条通用请求——它不命名任何功能分段——而消费方是外壳，因此双方都不依赖对方的功能。
 
 ### 可观察的成功与失败
 
@@ -60,6 +64,10 @@ kind: "package-reference"
 ### Schema 服务
 
 `ctx.settingsSchema` 为设置插件执行同步 schema 重建、校验与不可变路径编辑。若 spec 未提供 `decode`，则分区不是普通对象、未通过其重建后的 schema 校验、或携带本客户端无法重建的 schema 信封时，一律不发布任何值。
+
+### 导航请求
+
+`ctx.uiSettingsNav` 是叠在一条 `SettingsNavRequest`（`{ seq, sectionId }`）之上的薄可观察对象。`openSection` 递增一个私有计数并发布一条新请求；store 会保留最后一条请求供读取，于是点击之后才挂载的外壳仍能落到该分段。该服务不持有任何线路读取，除了转发的 id 字符串之外也不了解任何分段——回退由外壳决定，命名哪个 id 由 composer 决定。
 
 </details>
 

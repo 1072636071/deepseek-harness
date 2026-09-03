@@ -102,7 +102,7 @@ function SettingsPanel({ rows, renderSlot, activeId, onSelect, onClose }: PanelP
  * @returns the settings shell element tree.
  */
 export function SettingsRoot(props: SettingsRootComponentProps) {
-  const { wide, useSections, useOnboardingSteps, useSessions, renderSlot } = props
+  const { wide, useSections, useOnboardingSteps, useNav, useSessions, renderSlot } = props
   const [open, setOpen] = useState(false)
   const [activeId, setActiveId] = useState<string | undefined>(undefined)
   const [completedOnboarding, setCompletedOnboarding] = useState<ReadonlySet<string>>(() => new Set())
@@ -114,6 +114,19 @@ export function SettingsRoot(props: SettingsRootComponentProps) {
     setActiveId(id)
     setOpen(true)
   }, [])
+
+  // An external entry (e.g. the composer's model-config row) publishes an open
+  // request on `ctx.uiSettingsNav`; the shell applies each fresh request by its
+  // seq so a repeat of the same section still re-opens, and a request that
+  // arrives before the panel exists lands it on the right section.
+  const nav = useNav(s => s)
+  const appliedNavSeq = useRef(0)
+  useEffect(() => {
+    if (nav === null || nav.seq === appliedNavSeq.current) return
+    appliedNavSeq.current = nav.seq
+    setActiveId(nav.sectionId)
+    setOpen(true)
+  }, [nav])
 
   // The ledger tick keeps the nav rows fresh: registrants re-register with
   // freshly localized text on locale change, and the trigger/header/close

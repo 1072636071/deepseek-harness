@@ -1,11 +1,12 @@
 /**
  * ModelSelect: the composer's named model seat (`conversation.input.model`).
  * Two-level selection per figma 496:26454's MenuDropdown: the root menu is
- * the Model / Effort row pair (label + current value + a right chevron),
- * each drilling into its own list — the provider-grouped model list over
- * the shared directory, and the effort levels. The trigger (313:14108's
- * ToggleButton) shows both: model name + effort in the caption tone.
- * Data and submission ride the SAME per-session ModelDirectory as the
+ * the Model / Effort row pair (label + current value + a right chevron), each
+ * drilling into its own list — the provider-grouped model list over the shared
+ * directory, and the effort levels — plus an optional model-config row that hands
+ * off to the settings panel when a navigation callback is injected. The trigger
+ * (313:14108's ToggleButton) shows both: model name + effort in the caption
+ * tone. Data and submission ride the SAME per-session ModelDirectory as the
  * /model popup; exact-model reasoning metadata and the selected effort come
  * from the Host rather than a client-owned vocabulary. A rejected selection
  * announces through the shared transient Toast anchored to the composer
@@ -52,7 +53,7 @@ const EMPTY_VISIBILITY = createSnapshotStore<ModelVisibilityState>({
  * @returns the trigger and, while open, the two-level menu.
  */
 export function ModelSelect(
-  { locked, available, directory, visibility, load, select, t }:
+  { locked, available, directory, visibility, load, select, openModelConfig, t }:
   ModelSelectInjected & { locked: boolean } & PropsLocale<'model'>,
 ) {
   const state = useSyncExternalStore(
@@ -296,6 +297,26 @@ export function ModelSelect(
                 <button ref={itemRef()} type="button" role="menuitem" className={css.cell} onClick={() => { setPane('effort') }}>
                   <span className={css.cellLabel}>{t('menu.effort')}</span>
                   <span className={css.cellValue}>{effortLabel}</span>
+                  <IconChevronRightOutline14 className={css.cellChevron} />
+                </button>
+              )}
+              {/* The config row leaves the menu for the settings panel, so it
+                  carries no drilled value; the empty cell keeps the chevron
+                  right-aligned with the rows above. Absent navigation
+                  capability hides the whole row (no dead control). */}
+              {openModelConfig !== undefined && (
+                <button
+                  ref={itemRef()}
+                  type="button"
+                  role="menuitem"
+                  className={css.cell}
+                  onClick={() => {
+                    close()
+                    openModelConfig()
+                  }}
+                >
+                  <span className={css.cellLabel}>{t('menu.config')}</span>
+                  <span className={css.cellValue} />
                   <IconChevronRightOutline14 className={css.cellChevron} />
                 </button>
               )}

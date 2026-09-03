@@ -19,6 +19,8 @@ import type { CommandUiContract, SelectOption } from '@deepseek-ai/dsh-client-ui
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
 import type {} from '@deepseek-ai/dsh-client-locale/client'
+// Type-only: pulls the ctx.uiSettingsNav Context merge for the model-config row.
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -164,6 +166,12 @@ export function apply(ctx: ClientContext): void {
       inject: (sessionId): ModelSelectInjected => {
         const directory = models.directoryFor(sessionId)
         const available = sessions.subagentAddress(sessionId) === undefined
+        // The model-config row navigates through the settings-navigation capability
+        // (`ctx.uiSettingsNav`), landing on the Models section (its
+        // `settings.section` key owned by ui-settings-models). Absent the
+        // capability (a composition without the settings shell) the seat hides
+        // the row rather than render a dead control.
+        const settingsNav = scope.get('uiSettingsNav')
         return {
           available,
           directory: directory.store,
@@ -176,6 +184,9 @@ export function apply(ctx: ClientContext): void {
           select: (selection: ModelSelection) => available
             ? directory.select(selection).then(() => true, () => false)
             : Promise.resolve(false),
+          ...(settingsNav === undefined
+            ? {}
+            : { openModelConfig: () => { settingsNav.openSection('models') } }),
         }
       },
     }, ModelSelect))

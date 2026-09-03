@@ -1,7 +1,9 @@
 /**
  * Settings domain base plugin, browser half. Provides `ctx.settingsScope`, the
  * settings-namespace scope service every preference row binds its durable
- * section through, and owns the one `settings.describe` reader in the browser:
+ * section through, and provides `ctx.uiSettingsNav`, the cross-plugin
+ * capability that publishes an open request the settings shell reads to land on
+ * one section. It also owns the one `settings.describe` reader in the browser:
  * the describe mirror, whose invalidation subscriptions
  * (`settings/document-updated`, `connection/reset`) live here so every derived
  * surface refreshes from a single wire read. It depends on no `ui-*`
@@ -23,6 +25,7 @@ import type {} from '@deepseek-ai/dsh-settings/types'
 import { SettingsSchemaService } from './schema.ts'
 import { SettingsScopeBinder } from './settings-scope.ts'
 import { SettingsDescribeMirror } from './settings-mirror.ts'
+import { UiSettingsNavService } from './settings-nav.ts'
 
 export type {
   SettingsGeneralItemOwnerProps, SettingsHeaderOwnerProps, SettingsOnboardingOwnerProps,
@@ -35,6 +38,7 @@ export type { SchemaNode } from './schema.ts'
 export type {
   SettingsDescribeFace, SettingsDescribeView, SettingsMirrorSnapshot, SettingsRemote, SettingsWireFace,
 } from './settings-mirror.ts'
+export type { SettingsNavRequest, UiSettingsNav } from './settings-nav.ts'
 
 /**
  * Required services: the wire handle for the mirror's reads and the forwarded
@@ -71,4 +75,8 @@ export function apply(ctx: Context): void {
     return () => { for (const dispose of disposers) dispose() }
   }, 'ui-settings: describe mirror invalidations')
   new SettingsScopeBinder(ctx, { mirror, schema, wire })
+  // The cross-plugin settings-navigation capability: an entry that wants to
+  // land the user on a settings section publishes an open request here, and the
+  // shell (in a package this base must not depend on) reads it back.
+  new UiSettingsNavService(ctx)
 }

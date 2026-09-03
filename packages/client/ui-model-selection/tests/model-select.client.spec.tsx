@@ -470,6 +470,75 @@ describe('ModelSelect two-column layout', () => {
   })
 })
 
+describe('ModelSelect config entry', () => {
+  // No reasoning on the current model keeps the root menu to two rows: the
+  // model cell and the 「模型配置」 cell (the effort row is conditional).
+  const noReasoning = (): ModelDirectoryState => state({
+    current: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+    groups: [{
+      id: 'deepseek-official',
+      name: 'DeepSeek',
+      models: [{ id: 'deepseek-v4-flash', name: 'DeepSeek-V4-Flash' }],
+    }],
+  })
+
+  it('renders the 「模型配置」 row and fires the injected navigation on click', () => {
+    const openModelConfig = vi.fn()
+    const directory = createSnapshotStore<ModelDirectoryState>(noReasoning())
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      openModelConfig={openModelConfig}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '模型配置' }))
+    expect(openModelConfig).toHaveBeenCalledTimes(1)
+    // The handoff leaves the menu: the dropdown closes.
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('keeps model and reasoning navigation working alongside the config row', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(state())
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      openModelConfig={vi.fn()}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    // The model cell is disambiguated from the config row by its full name.
+    fireEvent.click(screen.getByRole('menuitem', { name: '模型DeepSeek-V4-Flash' }))
+    expect(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Flash/ })).toBeTruthy()
+  })
+
+  it('renders no config row when no navigation callback is injected', () => {
+    const directory = createSnapshotStore<ModelDirectoryState>(noReasoning())
+    render(<ModelSelect
+      locked={false}
+      available
+      directory={directory}
+      load={vi.fn()}
+      select={vi.fn().mockResolvedValue(true)}
+      t={t}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: /选择模型|当前/ }))
+    expect(screen.queryByRole('menuitem', { name: '模型配置' })).toBeNull()
+    // The model row still works with no config row present.
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    expect(screen.getByRole('menuitemradio', { name: /DeepSeek-V4-Flash/ })).toBeTruthy()
+  })
+})
+
 describe('ModelSelect visibility filtering', () => {
   const visibility = (hiddenIds: readonly string[]): SnapshotStore<ModelVisibilityState> =>
     createSnapshotStore<ModelVisibilityState>({

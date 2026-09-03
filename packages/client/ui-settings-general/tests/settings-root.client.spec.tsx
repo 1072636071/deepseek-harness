@@ -9,6 +9,7 @@ afterEach(cleanup)
 
 type Row = { id: string; order: number; label: string }
 type Step = { id: string; order: number }
+type Nav = { seq: number; sectionId: string } | null
 
 /** Slot-content stand-ins: the shell renders whatever the seats contribute. */
 const SEAT_CONTENT: Record<string, string> = {
@@ -39,6 +40,10 @@ function mount({
   // plays a ledger change through the same observable contract.
   let current = rows
   const listeners = new Set<() => void>()
+  // Mutable nav source standing in for the ctx.uiSettingsNav store; the shell
+  // reads a published open request through the bound useNav hook.
+  let nav: Nav = null
+  const navListeners = new Set<() => void>()
   const renderSlot = vi.fn(
     ((key: string, _owner: unknown, opts?: { only?: string }) => {
       if (key === 'settings.section') return <div data-testid={`section-${opts?.only ?? 'all'}`} />
@@ -59,6 +64,15 @@ function mount({
     useWorkspaces: unusedHook,
     wide,
     useOnboardingSteps: select => select(steps),
+    useNav: (select) => {
+      const [, force] = useState(0)
+      useEffect(() => {
+        const listener = () => { force(n => n + 1) }
+        navListeners.add(listener)
+        return () => { navListeners.delete(listener) }
+      }, [])
+      return select(nav)
+    },
     useSections: (select) => {
       const [, force] = useState(0)
       useEffect(() => {
@@ -77,7 +91,13 @@ function mount({
       for (const fn of [...listeners]) fn()
     })
   }
-  return { view, renderSlot, bump, listeners }
+  const bumpNav = (request: NonNullable<Nav>) => {
+    act(() => {
+      nav = request
+      for (const fn of [...navListeners]) fn()
+    })
+  }
+  return { view, renderSlot, bump, bumpNav, listeners, navListeners }
 }
 
 function openPanel() {
@@ -270,5 +290,34 @@ describe('SettingsPanel navigation', () => {
     expect(listeners.size).toBe(1)
     view.unmount()
     expect(listeners.size).toBe(0)
+  })
+
+  it('drops the nav subscription on unmount', () => {
+    const { view, bumpNav, navListeners } = mount()
+    bumpNav({ seq: 1, sectionId: 'models' })
+    expect(navListeners.size).toBe(1)
+    view.unmount()
+    expect(navListeners.size).toBe(0)
+  })
+
+  it('opens on the section an external request names, without the trigger click', () => {
+    const { bumpNav } = mount()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    bumpNav({ seq: 1, sectionId: 'models' })
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(screen.getByTestId('section-models')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Models' }).getAttribute('aria-current')).toBe('true')
+  })
+
+  it('re-opens on a fresh seq for the same section and ignores an already-applied seq', () => {
+    const { bumpNav } = mount()
+    bumpNav({ seq: 1, sectionId: 'models' })
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    // Same seq replayed (a re-render) must not re-open; a new seq does.
+    bumpNav({ seq: 1, sectionId: 'models' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    bumpNav({ seq: 2, sectionId: 'models' })
+    expect(screen.getByRole('dialog')).toBeTruthy()
   })
 })

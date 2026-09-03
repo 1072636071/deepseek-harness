@@ -4,6 +4,7 @@ import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { apply, inject } from '../src/client/index.ts'
 import { SettingsSchemaService } from '../src/client/schema.ts'
 import { SettingsScopeBinder } from '../src/client/settings-scope.ts'
+import { UiSettingsNavService } from '../src/client/settings-nav.ts'
 
 function bench() {
   const describeCall = vi.fn().mockResolvedValue({
@@ -45,5 +46,36 @@ describe('settings domain base plugin', () => {
     ctx.emit('connection/reset')
     await Promise.resolve()
     expect(describeCall).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('uiSettingsNav capability', () => {
+  it('is provided as a settings-navigation service and publishes a monotonic open request', async () => {
+    const { ctx, fiber } = bench()
+    await fiber.await()
+    const nav = ctx.get('uiSettingsNav')
+    expect(nav).toBeInstanceOf(UiSettingsNavService)
+    expect(nav?.store.getSnapshot()).toBeNull()
+
+    const seen: unknown[] = []
+    const unsubscribe = nav!.store.subscribe(() => { seen.push(nav!.store.getSnapshot()) })
+    nav!.openSection('models')
+    nav!.openSection('plugins')
+    unsubscribe()
+
+    expect(seen).toEqual([
+      { seq: 1, sectionId: 'models' },
+      { seq: 2, sectionId: 'plugins' },
+    ])
+    // The last request stays readable so a late-mounting shell still lands on it.
+    expect(nav!.store.getSnapshot()).toEqual({ seq: 2, sectionId: 'plugins' })
+  })
+
+  it('is retired with the fiber (HMR safety)', async () => {
+    const { ctx, fiber } = bench()
+    await fiber.await()
+    expect(ctx.get('uiSettingsNav')).toBeInstanceOf(UiSettingsNavService)
+    await fiber.dispose()
+    expect(ctx.get('uiSettingsNav')).toBeUndefined()
   })
 })
