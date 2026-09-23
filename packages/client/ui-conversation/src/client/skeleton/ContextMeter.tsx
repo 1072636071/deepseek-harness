@@ -1,8 +1,9 @@
 /** Composer context-occupancy meter: a ring beside the send button fed by the
- * `contextPressure` projection, with a click-open panel of the heuristic
- * `contextBreakdown` composition (system prompt, tools, conversation).
- * Renders nothing until a provider reports both pressure and a route
- * capacity. */
+ * `contextPressure` projection, with a breakdown panel of the heuristic
+ * `contextBreakdown` composition (system prompt, tools, conversation). The
+ * panel previews on hover; clicking the ring pins it open and a second click
+ * releases the pin. Renders nothing until a provider reports both pressure and
+ * a route capacity. */
 
 import { useEffect, useRef, useState } from 'react'
 import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -55,26 +56,35 @@ export interface ContextMeterProps {
 export function ContextMeter({ useProjection, t }: ContextMeterProps) {
   const pressure = useProjection('contextPressure')
   const breakdown = useProjection('contextBreakdown')
-  const [open, setOpen] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const [hovered, setHovered] = useState(false)
   const rootRef = useRef<HTMLSpanElement | null>(null)
   const context = contextOccupancy(pressure)
   const available = context !== null
+  const visible = pinned || hovered
 
   // A model switch can temporarily remove capacity while this component stays
-  // mounted. Close the now-unavailable panel instead of preserving stale UI.
+  // mounted, and the unmounted ring never receives a mouseleave. Release the
+  // pin and the hover state together so a returning capacity shows no stale
+  // panel.
   useEffect(() => {
-    if (!available && open) setOpen(false)
-  }, [available, open])
+    if (!available) {
+      setPinned(false)
+      setHovered(false)
+    }
+  }, [available])
 
-  // Outside click / Escape close, one document listener while open (Menu's pattern).
+  // Outside click / Escape drop the pin, one document listener while pinned
+  // (Menu's pattern); the hover preview needs no dismissal because leaving the
+  // pointer region already closes it.
   useEffect(() => {
-    if (!open || !available) return
+    if (!pinned || !available) return
     const onPointerDown = (e: PointerEvent): void => {
       if (e.target instanceof Node && rootRef.current?.contains(e.target) === true) return
-      setOpen(false)
+      setPinned(false)
     }
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key === 'Escape') setPinned(false)
     }
     document.addEventListener('pointerdown', onPointerDown)
     document.addEventListener('keydown', onKeyDown)
@@ -82,7 +92,7 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
       document.removeEventListener('pointerdown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [available, open])
+  }, [available, pinned])
 
   if (context === null) return null
   const percent = context.percent
@@ -104,15 +114,20 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
   const segments = parts.filter(part => part.width > 0)
 
   return (
-    <span ref={rootRef} className={css.root}>
-      <Tooltip label={t('context.aria', { percent: reading })} side="top" delayMs={200} disabled={open}>
+    <span
+      ref={rootRef}
+      className={css.root}
+      onMouseEnter={() => { setHovered(true) }}
+      onMouseLeave={() => { setHovered(false) }}
+    >
+      <Tooltip label={t('context.aria', { percent: reading })} side="top" delayMs={200} disabled={visible}>
         <button
           type="button"
           className={css.trigger}
           aria-label={t('context.aria', { percent: reading })}
           aria-haspopup="dialog"
-          aria-expanded={open}
-          onClick={() => { setOpen(!open) }}
+          aria-expanded={visible}
+          onClick={() => { setPinned(!pinned) }}
         >
           <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden>
             <circle className={css.track} cx="7" cy="7" r={RADIUS} />
@@ -127,7 +142,7 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
           </svg>
         </button>
       </Tooltip>
-      {open && (
+      {visible && (
         <div className={css.panel} role="dialog" aria-label={t('context.used')}>
           <div className={css.header}>
             {/* Empty sides collapse through `.headline:empty` so the locale that

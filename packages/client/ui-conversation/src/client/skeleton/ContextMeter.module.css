@@ -1,9 +1,12 @@
-/* Context-occupancy ring beside the send button plus its click-open breakdown
-   panel (menu surface: r12, elevation-prominent). */
+/* Context-occupancy ring beside the send button plus its hover-opened,
+   click-pinned breakdown panel (menu surface: r12, elevation-prominent). */
 
 .root {
   position: relative;
   display: inline-flex;
+
+  /* Gap between the ring and the panel; the hover bridge below must span exactly this distance. */
+  --dsh-composer-panel-gap: 8px;
 }
 
 /* Same 28px circular hit target family as the composer's attach button. */
@@ -40,7 +43,7 @@
 
 .panel {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + var(--dsh-composer-panel-gap));
   right: 0;
   z-index: 100;
   box-sizing: border-box;
@@ -55,6 +58,18 @@
   line-height: 20px;
   color: var(--dsw-alias-label-secondary);
   cursor: default;
+}
+
+/* Hover bridge across the gap under the panel: the pseudo-element belongs
+   to the panel's hit region, so moving the cursor from the ring onto the
+   panel never leaves the root span and the hover-opened panel stays put. */
+.panel::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: var(--dsh-composer-panel-gap);
 }
 
 .header {

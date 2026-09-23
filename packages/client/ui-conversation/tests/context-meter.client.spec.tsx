@@ -67,6 +67,62 @@ describe('ContextMeter', () => {
     expect(view.container.querySelector('[role="dialog"]')).toBeNull()
   })
 
+  it('shows the occupancy panel as soon as the pointer hovers the ring', () => {
+    const view = meter({
+      contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
+      contextBreakdown: BREAKDOWN,
+    })
+    const trigger = view.getByRole('button', { name: '上下文已用 25%' })
+    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    fireEvent.mouseEnter(trigger)
+    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    fireEvent.mouseLeave(trigger)
+    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('pins the panel on click and releases the pin on a second click', () => {
+    const view = meter({
+      contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
+      contextBreakdown: BREAKDOWN,
+    })
+    const trigger = view.getByRole('button', { name: '上下文已用 25%' })
+    // Hover previews, then the click pins so the panel survives the pointer leaving.
+    fireEvent.mouseEnter(trigger)
+    fireEvent.click(trigger)
+    fireEvent.mouseLeave(trigger)
+    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    // A second click releases the pin; a click always happens while hovering,
+    // so the panel stays on as the hover preview and follows the pointer out.
+    fireEvent.mouseEnter(trigger)
+    fireEvent.click(trigger)
+    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    fireEvent.mouseLeave(trigger)
+    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+  })
+
+  it('forgets the hover state while capacity is absent', () => {
+    // The unmounted ring receives no mouseleave, so a capacity that disappears
+    // mid-hover and returns must not show a panel the pointer no longer holds.
+    let values: Record<string, unknown> = {
+      contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
+      contextBreakdown: BREAKDOWN,
+    }
+    const view = render(<ContextMeter useProjection={(key: string) => values[key]} t={t} />)
+    const trigger = view.getByRole('button', { name: '上下文已用 25%' })
+    fireEvent.mouseEnter(trigger)
+    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    values = { contextPressure: { pressureTokens: 32_000 }, contextBreakdown: BREAKDOWN }
+    view.rerender(<ContextMeter useProjection={(key: string) => values[key]} t={t} />)
+    expect(view.container.textContent).toBe('')
+    values = {
+      contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
+      contextBreakdown: BREAKDOWN,
+    }
+    view.rerender(<ContextMeter useProjection={(key: string) => values[key]} t={t} />)
+    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.getByRole('button', { name: '上下文已用 25%' }).getAttribute('aria-expanded')).toBe('false')
+  })
+
   it('lets each locale own the headline word order around the reading', () => {
     const values = {
       contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
