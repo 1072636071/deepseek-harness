@@ -20,7 +20,7 @@ export const TurnProcessNodeView = memo(function TurnProcessNodeView({
   // One playful deep-diving phrase fixed at mount for the whole running Turn;
   // the per-second clock tick re-renders but never re-draws it. Non-zh/en ids
   // miss the pool, so they fall back to the plain `chat.deepDiving` label.
-  const [phrase] = useState(() => pickDeepDivingPhrase(activeLocale()))
+  const [phrase] = useState(() => activeLocale === undefined ? undefined : pickDeepDivingPhrase(activeLocale()))
   const ticking = turn?.status === 'open' && turn.start !== undefined
   useEffect(() => {
     if (!ticking) return
