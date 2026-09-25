@@ -12,7 +12,7 @@ import Hmr from '@deepseek-ai/dsh-hmr'
 import DefaultModel from '@deepseek-ai/dsh-agent-default-model'
 import Settings from '../src/index.ts'
 
-export async function configurationFixture(options: { schema?: z; apply?: (ctx: Context, config: unknown) => void; hmr?: boolean } = {}) {
+export async function configurationFixture(options: { schema?: z; apply?: (ctx: Context, config: unknown) => void; hmr?: boolean; startup?: 'committed' | 'failed' | 'absent' } = {}) {
   const home = realpathSync(mkdtempSync(join(tmpdir(), 'settings-config-')))
   const dir = join(home, 'profiles', 'test')
   onTestFinished(() => { rmSync(home, { recursive: true, force: true }) })
@@ -37,14 +37,34 @@ export async function configurationFixture(options: { schema?: z; apply?: (ctx: 
     Config: options.schema ?? z.object({ ordinary: z.string().required(), count: z.number().min(1).default(2).volatile(), token: z.string().role('secret').volatile(), list: z.array(z.object({ name: z.string().required(), token: z.string().role('secret') })).volatile() }),
     apply: options.apply ?? (() => {}),
   }
-  const start = async (): Promise<Context> => {
+  const start = async (startup: 'committed' | 'failed' | 'absent' = options.startup ?? 'committed'): Promise<Context> => {
+    // Mirror the CLI launcher's readiness signal: a listener runs only once startup is committed, and one
+    // registered after the commit runs immediately.
+    const listeners = new Set<() => void>()
+    let committed = false
+    const commitReady = (): void => {
+      if (committed) return
+      committed = true
+      for (const listener of [...listeners]) listener()
+      listeners.clear()
+    }
     const ctx = await boot('test', join(dir, 'cordis.yml'), readProfilePatches('test', profile), (ctx) => {
       ctx.provide('profileContext', profile)
-      ctx.provide('appReady', { onReady: (listener: () => void) => { listener(); return () => {} } })
+      if (startup !== 'absent') ctx.provide('appReady', {
+        onReady(listener: () => void) {
+          if (committed) {
+            listener()
+            return () => {}
+          }
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+      })
       Object.assign(ctx.loader.builtins, {
         editor: ConfigEditor, settings: Settings, model: DefaultModel, probe: Probe,
       })
     })
+    if (startup !== 'failed') commitReady()
     onTestFinished(async () => { await ctx.fiber.dispose() })
     if (options.hmr !== false) {
       await ctx.plugin(Timer)

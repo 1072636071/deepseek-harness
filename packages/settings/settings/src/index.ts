@@ -6,6 +6,7 @@ import { parse } from 'yaml'
 import { Context, FiberState, Service, resolveConfig, type Fiber } from '@deepseek-ai/cordis'
 import type z from '@deepseek-ai/schemastery'
 import { interpolate, type Entry } from '@deepseek-ai/cordis-plugin-loader'
+import type {} from '@deepseek-ai/dsh-cmdline'
 import type {} from '@deepseek-ai/dsh-config-editor'
 import type {} from '@deepseek-ai/dsh-app-boot'
 import { redactSecrets, type RedactedSecret } from './redact.ts'
@@ -232,12 +233,21 @@ export class SettingsForms extends Service {
     const ctx = ownerContext
     ctx.effect(() => () => { this.closed = true })
     ctx.on('app-boot/config-reload', () => { this.invalidate() })
-    void ctx.root.loader.await().then(() => this.importLegacyDocument()).catch((error: unknown) => { ctx.logger.error(error) })
+    // A failed startup never commits readiness, so waiting for it keeps the import off a torn-down tree, where every
+    // section edit fails and consumes the document that holds the user's only copy of their configuration.
+    const startup = ctx.get('appReady')
+    const started = Promise.withResolvers<void>()
+    if (startup === undefined) started.resolve()
+    else ctx.effect(() => startup.onReady(() => { started.resolve() }))
+    void Promise.all([ctx.root.loader.await(), started.promise])
+      .then(() => this.importLegacyDocument())
+      .catch((error: unknown) => { ctx.logger.error(error) })
   }
 
-  /** Move the sections of the removed `settings.yaml` into the active profile once the Loader has settled every entry.
+  /** Move the sections of the removed `settings.yaml` into the active profile once startup is ready and the Loader has settled every entry.
    * The document is renamed before the first write, so a partial import never repeats; a section the running
-   * composition rejects is logged and remains only in the renamed file. */
+   * composition rejects is logged and remains only in the renamed file. A document whose every section the composition
+   * rejected is restored under its original name, so a later start can still import it. */
   private async importLegacyDocument(): Promise<void> {
     const profile = this.ownerContext.profileContext
     const path = join(profile.home, 'settings.yaml')
@@ -245,14 +255,24 @@ export class SettingsForms extends Service {
     const imported = `${path}.imported`
     await rename(path, imported)
     const sections = parse(await readFile(imported, 'utf8')) as Record<string, object> | null
-    for (const [section, values] of Object.entries(sections ?? {})) {
+    const rows = Object.entries(sections ?? {})
+    let accepted = 0
+    for (const [section, values] of rows) {
       const ns = LEGACY_SECTION_ENTRIES[section] ?? section
       try {
         await this.update(ns, values)
+        accepted += 1
       } catch (error) {
         this.ownerContext.logger.warn('settings: section %s of %s was not imported into entry %s', section, imported, ns)
         this.ownerContext.logger.warn(error)
       }
+    }
+    if (accepted === 0 && rows.length > 0) {
+      await rename(imported, path)
+      this.ownerContext.logger.error(
+        'settings: no section of %s was imported into profile %s; the document was restored for the next start', path, profile.name,
+      )
+      return
     }
     this.ownerContext.logger.info('settings: imported %s into profile %s', imported, profile.name)
   }

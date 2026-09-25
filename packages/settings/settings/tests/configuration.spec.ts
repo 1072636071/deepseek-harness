@@ -339,6 +339,46 @@ it('imports the removed settings.yaml into the profile once and keeps rejected s
   expect(blocked.agentDefaultModel.currentSelection().model).toBe('legacy')
 })
 
+it('leaves the removed settings.yaml in place when startup never becomes ready', async () => {
+  // HMR gates its own operations on readiness, so a never-ready tree cannot flush through `runExclusive`.
+  const { ctx, home, start } = await fixture({ hmr: false })
+  await ctx.fiber.dispose()
+  const legacy = join(home, 'settings.yaml')
+  writeFileSync(legacy, 'default-model:\n  model: legacy\n')
+  // A startup that fails never commits readiness, so the import that consumes the document never runs: the Loader has
+  // settled here, which is the condition that let the unguarded import reach a tree torn down by a failed start.
+  const failed = await start('failed')
+  await failed.loader.await()
+  await new Promise((resolve) => { setTimeout(resolve, 10) })
+  expect(existsSync(legacy)).toBe(true)
+  expect(existsSync(`${legacy}.imported`)).toBe(false)
+})
+
+it('imports the removed settings.yaml for a host that provides no readiness signal', async () => {
+  const { ctx, home, start } = await fixture({ hmr: false })
+  await ctx.fiber.dispose()
+  const legacy = join(home, 'settings.yaml')
+  writeFileSync(legacy, 'default-model:\n  model: legacy\n')
+  const hostless = await start('absent')
+  await vi.waitFor(() => { expect(hostless.agentDefaultModel.currentSelection().model).toBe('legacy') })
+})
+
+it('restores the removed settings.yaml when the composition accepts none of its sections', async () => {
+  const { ctx, home, profile, start } = await fixture()
+  await ctx.fiber.dispose()
+  const legacy = join(home, 'settings.yaml')
+  writeFileSync(legacy, 'missing:\n  count: 1\n')
+  const before = readFileSync(profile.patchPath, 'utf8')
+  const restored = await start()
+  const errors = (): unknown[] => restored.logger.buffer.filter(message => message.type === 'error').flatMap((message): readonly unknown[] => message.args)
+  await vi.waitFor(() => {
+    expect(errors().some(argument => typeof argument === 'string' && argument.includes('restored for the next start'))).toBe(true)
+  })
+  expect(readFileSync(legacy, 'utf8')).toBe('missing:\n  count: 1\n')
+  expect(existsSync(`${legacy}.imported`)).toBe(false)
+  expect(readFileSync(profile.patchPath, 'utf8')).toBe(before)
+})
+
 it('describes an entry whose required field only the profile supplies, and reports a failed refresh instead of crashing', async () => {
   const { ctx, profile, start } = await fixture({
     schema: z.object({ ordinary: z.string(), required: z.string().required(), count: z.number().default(2).volatile() }),

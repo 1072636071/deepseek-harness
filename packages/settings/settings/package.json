@@ -46,6 +46,7 @@
     "@deepseek-ai/schemastery": "workspace:~",
     "@deepseek-ai/cordis-plugin-timer": "workspace:~",
     "@deepseek-ai/dsh-app-boot": "workspace:*",
+    "@deepseek-ai/dsh-cmdline": "workspace:*",
     "@deepseek-ai/dsh-hmr": "workspace:*",
     "@deepseek-ai/dsh-agent-default-model": "workspace:*",
     "yaml": "^2.8.1"
