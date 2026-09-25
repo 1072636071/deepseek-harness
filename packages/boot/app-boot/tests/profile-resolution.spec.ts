@@ -651,6 +651,51 @@ describe('runtime resolution', { concurrent: false }, () => {
     })
   })
 
+  it('keeps a resolver error whose loader-rebuilt stack rejects rewriting', async () => {
+    const f = fixture()
+    file(join(f.profile.dir, 'package.json'), JSON.stringify({
+      name: 'dsh-profile-web',
+      private: true,
+      imports: { '#missing': '@deepseek-ai/dsh-core/missing' },
+    }))
+    const addon = createRequire(import.meta.url)('node-addon-require-builtin') as {
+      requireBuiltin(id: string): unknown
+    }
+    const internal = (addon.requireBuiltin('internal/modules/esm/loader') as {
+      getOrInitializeCascadedLoader(): Record<string, unknown>
+    }).getOrInitializeCascadedLoader()
+    // The ESM loader worker returns resolver errors that `internal/error_serdes` rebuilds with a read-only own `stack`.
+    const throwing = (...args: unknown[]): never => {
+      const routedParent = args.find((arg): arg is string => typeof arg === 'string' && arg.startsWith('file://')) ?? ''
+      const error = new Error(
+        `Package subpath './missing' is not defined by "exports" in ${routedParent} imported from ${routedParent}`,
+      ) as NodeJS.ErrnoException
+      error.code = 'ERR_PACKAGE_PATH_NOT_EXPORTED'
+      Object.defineProperty(error, 'stack', {
+        value: `Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: ${error.message}\n    at exportsNotFound (node:internal/modules/esm/resolve:314:10)`,
+        writable: false, configurable: true,
+      })
+      throw error
+    }
+    const previous = Object.getOwnPropertyDescriptor(internal, 'resolveSync')
+    Object.defineProperty(internal, 'resolveSync', { value: throwing, writable: true, configurable: true })
+    try {
+      const registration = installRuntimeInterception(await resolutionOf(f))
+      try {
+        const parent = pathToFileURL(join(f.profile.dir, 'entry.mjs')).href
+        const thrown = thrownError(() => resolveFrom('#missing', parent))
+        expect(thrown.code).toBe('ERR_PACKAGE_PATH_NOT_EXPORTED')
+        expect(thrown.message).toContain(parent)
+        expect(thrown.stack).toContain('exportsNotFound')
+      } finally {
+        registration.dispose()
+      }
+    } finally {
+      if (previous === undefined) delete internal.resolveSync
+      else Object.defineProperty(internal, 'resolveSync', previous)
+    }
+  })
+
   it('leaves relative package imports targets and their diagnostics to Node', async () => {
     const f = fixture()
     file(join(f.profile.dir, 'package.json'), JSON.stringify({

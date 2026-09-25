@@ -652,6 +652,19 @@ function internalModules(): InternalModules {
   }
 }
 
+/**
+ * Assigns a rewritten stack. The ESM loader worker returns resolver errors that
+ * `internal/error_serdes` rebuilds with a read-only own `stack`, where a plain assignment
+ * throws a TypeError that replaces the original resolver failure at the caller.
+ */
+function assignStack(error: Error, stack: string): void {
+  try {
+    error.stack = stack
+  } catch {
+    // TypeError: a read-only rebuilt stack rejects the assignment; the error keeps its captured stack.
+  }
+}
+
 function throwWithImporter(error: unknown, routedParent: string, parent: string): never {
   const code = (error as NodeJS.ErrnoException).code
   if (error instanceof Error && (code === 'ERR_MODULE_NOT_FOUND' || code === 'ERR_PACKAGE_PATH_NOT_EXPORTED')) {
@@ -662,7 +675,7 @@ function throwWithImporter(error: unknown, routedParent: string, parent: string)
     const stack = error.stack
     error.message = message
     /* v8 ignore next -- Node's resolver errors always carry a stack */
-    if (stack !== undefined) error.stack = stack.replace(originalMessage, message)
+    if (stack !== undefined) assignStack(error, stack.replace(originalMessage, message))
   }
   throw error
 }
