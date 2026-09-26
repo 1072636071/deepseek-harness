@@ -27,3 +27,9 @@
   6. 版本一致性靠三个脚本兜底：`tmp-root-violations.cjs`（按 specifier 找根违例）→ `tmp-apply-overrides.cjs`（最近安全祖先目录放指定版本）→ `tmp-fix-nested-deps.cjs`（根包内补嵌套依赖）。
 - 用户在**自己的终端**（有该权限）跑 `pnpm install && pnpm run build` 不受此限；本机做的工作区改造都可被一次正常 `pnpm install` 重建，但 hoisted/别名等本地技巧需自重。
 - 相关：WorkBuddy 注入的 `NODE_OPTIONS` shim 会把 fs 删除重定向到回收站助手并让大目录操作超时，跑安装/构建/脚本前一律 `NODE_OPTIONS= CODEBUDDY_SAFE_DELETE_BULK_GUARD=`。
+
+## web profile（`C:\Users\jxc1\.dsh\profiles\web`）操作铁律
+
+- **改插件配置只改 `package.json`**（`dependencies` + `dsh.profile.bundles` 两处），不要用 `dsh plugin` 子命令——它会按内部记录把 package.json 回滚。
+- **不要在该 profile 跑 `pnpm install`**：它会把 `link:`/`file:` 依赖重建成 junction，而本机进程不可遍历 reparse point，插件立刻挂。正确做法：直接改清单 + 手工放置/删除实体化副本（硬链接拷贝），再重启。
+- 该 profile 的第三方插件坐标依赖仓库里的核心包实现：若插件报 settings/服务 API 不存在（如 `settings.register is not a function`），根因通常是 profile 内旧版 `@deepseek-ai/*` 副本，用 `.workbuddy/refresh-profile-core.cjs` 覆盖为当前 rc 版本；插件自身用已移除 API 的（如 dsh-web-ui-jx）只能升级或按用户要求移除。
