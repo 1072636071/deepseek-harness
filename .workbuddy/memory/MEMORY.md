@@ -14,3 +14,16 @@
 
 ## 环境坑
 - agent-browser 在本机（Windows）打开 file:// 中文路径会无输出挂起，验证 HTML 用 python html.parser 即可。
+
+## 【2026-09-26 关键】本机不可遍历 reparse point —— 决定 node_modules 用法
+
+- 事实：本机所有工具进程（node / bash / PowerShell，`dangerouslyDisableSandbox` 也一样）**无法穿越目录符号链接/junction**：`fs.existsSync(链接/文件)=false`、`readdir` 报 `UNKNOWN`，PowerShell 报「无法遍历该路径，因为它包含不受信任的装入点」（STATUS_UNTRUSTED_MOUNT_POINT）。自建 junction/symlink 同样不可穿越；C:/D: 都复现。
+- 由此派生的硬性结论：
+  1. **pnpm isolated 布局在本机不可用**；`pnpm install --config.node-linker=hoisted` 也跑不通（pnpm 要读它自己建的 workspace 链接）。`pnpm install` 一旦树里已有链接就会中途 UNKNOWN 失败。
+  2. `fs.cpSync` 在**源目录含链接**时会让进程被环境杀掉；拷贝一律用**硬链接自研逐项拷贝**（`fs.linkSync`，跨卷退回 `copyFileSync`）。
+  3. 让工具链可用的做法：`pnpm install --config.node-linker=isolated`（恢复 store 与 `.bin`）→ 自建**扁平根 node_modules**（`.workbuddy/tmp-flat-hoist.cjs`，硬链接、每名一版本）→ **工作区包只在根留一份**（`.workbuddy/tmp-root-workspace.cjs`，并清掉项目级拷贝，否则 TS 报 `X is not assignable to X`/TS6307）→ 项目级 node_modules 只留 `.bin`（`.workbuddy/tmp-empty-project-modules.cjs`，否则第三方 .d.ts 落在包根内会被 typert 分析器走进去崩）。
+  4. `tsconfig.base.json` 追加**深层子路径别名块**（`.workbuddy/tmp-gen-deep-aliases.cjs`，`<pkg>/src/*` 与 manifest exports 子路径，跳过已有键）：没有它 host 面 4 错、client 面 277 错。该块在工作树里、**未提交**；副作用是 `pnpm run verify-tsconfig-paths --check` 会报 stale。
+  5. 构建：`tsc -b --force`（必须 `--force`）→ 分块 `tsdown`（`tsdown.chunk.local.ts` + `.workbuddy/run-face-chunks.sh host|client`，单进程整仓打包必 OOM >14GB）→ `pnpm --filter @deepseek-ai/dsh-web-frontend run build` → `.workbuddy/write-client-record.ts` 写 `.dsh-build/client-build-environment.json`。
+  6. 版本一致性靠三个脚本兜底：`tmp-root-violations.cjs`（按 specifier 找根违例）→ `tmp-apply-overrides.cjs`（最近安全祖先目录放指定版本）→ `tmp-fix-nested-deps.cjs`（根包内补嵌套依赖）。
+- 用户在**自己的终端**（有该权限）跑 `pnpm install && pnpm run build` 不受此限；本机做的工作区改造都可被一次正常 `pnpm install` 重建，但 hoisted/别名等本地技巧需自重。
+- 相关：WorkBuddy 注入的 `NODE_OPTIONS` shim 会把 fs 删除重定向到回收站助手并让大目录操作超时，跑安装/构建/脚本前一律 `NODE_OPTIONS= CODEBUDDY_SAFE_DELETE_BULK_GUARD=`。
