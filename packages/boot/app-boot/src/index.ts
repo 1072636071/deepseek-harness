@@ -254,7 +254,25 @@ export function loadLayeredEnv(
   ])
 }
 
-const bootstrapIncludes = new WeakMap<Context, Entry>()
+/**
+ * Slot holding the launcher's root Include entry, keyed on the booted context.
+ * The key comes from the global symbol registry rather than module scope: one
+ * installation can carry this module twice (the launcher imports the source
+ * half through tsconfig paths while a plugin loaded from `lib/` imports the
+ * built half), and the two copies must still agree on which entry is the root
+ * of the tree they share. A module-local WeakMap makes each copy see only its
+ * own registrations, so every profile write from the plugin-side copy fails.
+ */
+export const BOOTSTRAP_INCLUDE = Symbol.for('@deepseek-ai/dsh-app-boot/bootstrap-include')
+
+/**
+ * Read the root Include entry {@link mountRootInclude} registered on a context.
+ * @param ctx - the booted root context, or any context inheriting from it.
+ * @returns the root Include entry, or undefined when this context is not a booted tree.
+ */
+function bootstrapIncludeOf(ctx: Context): Entry | undefined {
+  return Reflect.get(ctx, BOOTSTRAP_INCLUDE) as Entry | undefined
+}
 
 // The include's YAML dialect (`!!js` scalars become expression nodes the
 // Loader interpolates against each entry's injection-ready context), imported
@@ -273,7 +291,7 @@ const userPatchesSchema = entryListSchema
 export async function reconcileProfilePatches(
   ctx: Context, patches: PatchOptions[], binName: string, requiredIds: readonly string[] = [],
 ): Promise<string[]> {
-  const entry = bootstrapIncludes.get(ctx)
+  const entry = bootstrapIncludeOf(ctx)
   if (entry === undefined) throw new Error(`${binName}: profile reload requires the root Include entry`)
   const previousFailures = (await inactiveEntries(ctx)).map(failure => ({
     ...failure, diagnostic: inactiveDiagnostic(failure), fiber: failure.entry.fiber, options: JSON.stringify(failure.entry.options),
@@ -580,7 +598,7 @@ export async function mountRootInclude(
   const loader = ctx.get('loader')
   if (loader === undefined) return undefined
   const entry = loader.resolve(includeId)
-  bootstrapIncludes.set(ctx, entry)
+  Reflect.set(ctx, BOOTSTRAP_INCLUDE, entry)
   return entry
 }
 
@@ -928,7 +946,7 @@ export async function auditStartupEntries(
   warn: (line: string) => void = line => void process.stderr.write(line),
 ): Promise<void> {
   const failures = await inactiveEntries(ctx)
-  const required = new Set(failures.filter(({ entry }) => entry === bootstrapIncludes.get(ctx)
+  const required = new Set(failures.filter(({ entry }) => entry === bootstrapIncludeOf(ctx)
     || requiredStartupEntryIds.has(entry.options.id)).map(({ entry }) => entry))
   if (required.size > 0) {
     throw new StartupError(startupDiagnostic(binName, failures, required), failures.map(({ entry, outcome }) => ({
