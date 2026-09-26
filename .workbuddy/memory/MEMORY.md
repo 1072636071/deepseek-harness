@@ -37,4 +37,6 @@
 
 - **改插件配置只改 `package.json`**（`dependencies` + `dsh.profile.bundles` 两处），不要用 `dsh plugin` 子命令——它会按内部记录把 package.json 回滚。
 - **不要在该 profile 跑 `pnpm install`**：它会把 `link:`/`file:` 依赖重建成 junction，而本机进程不可遍历 reparse point，插件立刻挂。正确做法：直接改清单 + 手工放置/删除实体化副本（硬链接拷贝），再重启。
+- **例外（2026-09-26 实测）**：`dsh plugin add` 本身**能**正确写 package.json（deps + bundles 都对），且 hoisted 模式下 `file:` 依赖被实体化成真目录（win-shell-mcp / dsh-web-ui-jx 均安全）——**只有 `link:` 会变成真符号链接**。所以真正的铁律是：**任何 profile 级 pnpm 操作（add / remove / update / approve-builds）之后，立即跑 `.workbuddy/repair-profile-links.cjs`**；不跑的话 profile 启动期直接崩在 `legacy-links.ts` 的 `realpath`（`UNKNOWN: unknown error`），日志前一行会提示 `skipping profile bundle "<name>"`。
+- `dsh plugin add` 报 `ERR_PNPM_IGNORED_BUILDS` 属**设计内的两步流**（分类 `build-blocked`）：pnpm 11 把未批准的 postinstall 写成 `pnpm-workspace.yaml` 里 `allowBuilds: <pkg>: set this to true or false` 占位，需 `approve-builds` 或手改该文件后重跑。注意 `nodeLinker: hoisted` + `allowBuilds` 都是 dsh 自己写的（`packages/boot/app-boot/src/profile.ts:232`），不是异常。
 - 该 profile 的第三方插件坐标依赖仓库里的核心包实现：若插件报 settings/服务 API 不存在（如 `settings.register is not a function`），根因通常是 profile 内旧版 `@deepseek-ai/*` 副本，用 `.workbuddy/refresh-profile-core.cjs` 覆盖为当前 rc 版本；插件自身用已移除 API 的（如 dsh-web-ui-jx）只能升级或按用户要求移除。
