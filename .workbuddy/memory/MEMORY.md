@@ -14,6 +14,11 @@
 
 ## 环境坑
 - agent-browser 在本机（Windows）打开 file:// 中文路径会无输出挂起，验证 HTML 用 python html.parser 即可。
+- **src/lib 双模块副本（2026-09-26 实锤）**：本机跑 `node --import tsx/esm apps/cli/src/bin.ts` 时，启动器经 tsconfig paths 加载 `packages/*/src`，而 `lib/` 加载的插件（config-editor / hmr / plugin-manager）加载 `node_modules/@deepseek-ai/*/lib`。凡是**模块级共享状态**（私有 `Symbol()`、WeakMap/Map 注册表）都会分成两份，跨半边传递必然丢。已修两处：① app-boot 的根 Include 挂在 `Symbol.for('@deepseek-ai/dsh-app-boot/bootstrap-include')`（提交 c647ee4838）；② `dsh-scope` 的 tag/carriers/parents 合并为 `Symbol.for('@deepseek-ai/dsh-scope/identity')` 上的共享对象（2026-09-26，未提交）。
+  - **症状识别**：preset/agent 的 scoped 注册全部报"already registered（…register through that agent's `agent.ctx` instead）"或 `requires a scoped preset Context` —— 全局层那条消息文案就代表 `scopeOf(ctx)` 返回了 undefined，而 `mountPreset` 自己的 scope 检查是通过的（两处用的是不同副本的 `scopeOf`）。四个内置 preset（minimal/ptc/standard/cordis）同时挂不上即可确诊。
+  - **验证方法**：在 src 与 lib **两半**都插模块加载探针（`process.stderr.write(import.meta.url)`）+ 在 `mountPreset` 打印 `audit.failed/pending`，再 `PATH="/d/work/space/.dsh-bin:$PATH" NODE_OPTIONS= pnpm dsh --profile web --no-open`（端口冲突也会照常打完 preset 审计）。注意 registry 实际跑的是 **lib** 半边，探针只加在 src 里看不到输出。
+- **dsh 运行时 RPC 可直接 curl 复现**（诊断 UI 报错的神器）：`GET /?token=<启动打印的 token>` 拿 cookie，再 `POST /api/<method>`，body `{"type":"client-request","rpcId":"1","method":"settings/mutate","payload":{"args":{…}}}`——`args` 必须是**对象**。settings 面方法：`describe` / `update`（ns,patch,expectedRevision）/ `replace` / `mutate`（ns,ops,expectedRevision）。
+- 单包重构建（本机可用）：`node node_modules/typescript/bin/tsc -b <pkg>/tsconfig.json` → 在包目录 `node <root>/node_modules/tsdown/dist/run.mjs --config tsdown.config.ts`（2026-09-26 实测根 `node_modules/tsdown/dist/run.mjs` 存在且可用，单包 26ms）；`node_modules/@deepseek-ai/<pkg>/lib` 与 `packages/**/lib` 是硬链接，原地覆盖即同步。
 
 ## 【2026-09-26 关键】本机不可遍历 reparse point —— 决定 node_modules 用法
 
