@@ -14,8 +14,51 @@ export type { ScopeLayer } from './store.ts'
 /** An opaque, identity-compared scope key. */
 export type ScopeKey = object
 
-/** Context tag written by {@link createScope}. */
-const kScope = Symbol('dsh.scope')
+/**
+ * The tag and relations every copy of this module in the process shares.
+ *
+ * One installation can carry the module twice: the launcher imports the source
+ * half through tsconfig paths while a plugin resolved from an installed
+ * package imports the built half. A module-local tag and module-local
+ * `WeakMap`s then let the halves disagree — {@link createScope} would tag a
+ * context through one copy and {@link scopeOf} would answer `undefined` from
+ * the other, which silently turns every scoped registration (an agent preset's
+ * rows included) into a context-global one that collides with the deployment's
+ * own. The global symbol registry gives both halves one tag and one pair of
+ * relations, as `Entry.key` and the boot root-Include slot already do.
+ */
+interface ScopeIdentity {
+  /** Context tag written by {@link createScope} and read by {@link scopeOf}. */
+  readonly tag: symbol
+  /** The key associated with each carrier. Presence distinguishes an unkeyed carrier from a non-carrier. */
+  readonly carriers: WeakMap<object, ScopeKey | undefined>
+  /**
+   * The enclosing scope of each key. One relation powers both directions of
+   * scope nesting: registration views inherit DOWN the chain (a child scope
+   * sees its ancestors' layers — {@link ScopedLayers}), and event admission
+   * extends UP it (a listener tagged with an ancestor receives events dispatched
+   * to a descendant key — {@link scopeTarget}).
+   */
+  readonly parents: WeakMap<ScopeKey, ScopeKey>
+}
+
+/** Global-symbol slot holding this process's {@link ScopeIdentity}. */
+const SCOPE_IDENTITY = Symbol.for('@deepseek-ai/dsh-scope/identity')
+
+/** The shared identity, created by whichever copy of this module loads first. */
+function scopeIdentity(): ScopeIdentity {
+  const existing = Reflect.get(globalThis, SCOPE_IDENTITY) as ScopeIdentity | undefined
+  if (existing !== undefined) return existing
+  const created: ScopeIdentity = {
+    tag: Symbol('dsh.scope'),
+    carriers: new WeakMap(),
+    parents: new WeakMap(),
+  }
+  Reflect.set(globalThis, SCOPE_IDENTITY, created)
+  return created
+}
+
+const { tag: kScope, carriers: carrierKeys, parents: scopeParents } = scopeIdentity()
 
 declare const ScopedBrand: unique symbol
 
@@ -25,18 +68,6 @@ declare const ScopedBrand: unique symbol
  * not expose the subject's properties. Event payloads carry the real subject.
  */
 export type Scoped<T extends object> = object & { readonly [ScopedBrand]: T }
-
-/** The key associated with each carrier. Presence distinguishes an unkeyed carrier from a non-carrier. */
-const carrierKeys = new WeakMap<object, ScopeKey | undefined>()
-
-/**
- * The enclosing scope of each key. One relation powers both directions of
- * scope nesting: registration views inherit DOWN the chain (a child scope
- * sees its ancestors' layers — {@link ScopedLayers}), and event admission
- * extends UP it (a listener tagged with an ancestor receives events dispatched
- * to a descendant key — {@link scopeTarget}).
- */
-const scopeParents = new WeakMap<ScopeKey, ScopeKey>()
 
 /** The privileged handle to move one scope key's parent link. */
 export interface ScopeParentBinding {

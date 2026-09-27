@@ -1,5 +1,5 @@
 /* Context-occupancy ring beside the send button plus its hover-opened,
-   click-pinned breakdown panel (menu surface: r12, elevation-prominent). */
+   click-pinned breakdown panel (menu surface: elevation-prominent). */
 
 .root {
   position: relative;
@@ -50,7 +50,7 @@
   width: 264px;
   padding: 12px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--dsw-radius-lg);
   background: var(--dsw-specific-menu);
   backdrop-filter: var(--dsw-menu-backdrop-filter);
   --dsw-elevation-stroke-color: var(--dsw-alias-border-l1);

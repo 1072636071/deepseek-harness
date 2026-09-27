@@ -14,6 +14,7 @@ import Include, { type PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
 import {
   boot,
+  BOOTSTRAP_INCLUDE,
   loadOptionalPatches,
   loadOverlayPatches,
   PROFILE_PATCH_FILENAME,
@@ -347,6 +348,18 @@ describe('profile reconciliation settlement', () => {
     // A Loader without the pinned root id is no better.
     await ctx.plugin(Loader)
     await expect(reconcileProfilePatches(ctx, [], NAME)).rejects.toThrow('profile reload requires the root Include entry')
+  })
+
+  it('publishes the root Include on the context, so a second copy of this module reloads the profile too', async () => {
+    const dir = tmp()
+    writeFileSync(join(dir, 'cordis.yml'), '[]\n')
+    const ctx = await boot(NAME, join(dir, 'cordis.yml'), [])
+    onTestFinished(() => ctx.fiber.dispose())
+    // The launcher and a plugin loaded from `lib/` can hold different copies of
+    // this module; both must resolve the same entry through the global-registry
+    // symbol, never through module-local state.
+    expect(Reflect.get(ctx, BOOTSTRAP_INCLUDE)).toBe([...ctx.loader.entries()].find(row => row.options.id === 'include'))
+    expect(await reconcileProfilePatches(ctx, [], NAME)).toEqual([])
   })
 
   it('removes a previously failed entry without reporting its old activation error', async () => {
