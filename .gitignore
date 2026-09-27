@@ -47,3 +47,9 @@ worktrees/
 .agents/worktrees/
 .typert-*/
 native/system/test/bin/
+
+# packages/experimental/webworker-runtime: tsc 编译产物散落在 src 内
+packages/experimental/webworker-runtime/src/**/*.js
+packages/experimental/webworker-runtime/src/**/*.js.map
+packages/experimental/webworker-runtime/src/**/*.d.ts
+packages/experimental/webworker-runtime/src/**/*.d.ts.map
