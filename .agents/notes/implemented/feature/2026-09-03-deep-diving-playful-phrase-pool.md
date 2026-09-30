@@ -2,13 +2,15 @@
 
 Status: implemented
 
+English | [中文](2026-09-03-deep-diving-playful-phrase-pool.zh.md)
+
 ## Problem
 
 The running-turn status line shows the same static "深度求索中..." / "Deep diving..." copy on every turn; long waits feel dead. The user asked for roughly 100 random playful phrases instead, with anchor lines like "token，token，有 token 就干活。".
 
 ## Decision
 
-`ui-chat` owns a frozen phrase pool (`deepDivingPool`: 100 zh + 100 en, aligned one-to-one) inside its locale-owner file, plus a pure `pickDeepDivingPhrase(localeId, random)` selector. `TurnStatus` picks one phrase per mount through a `useState` initializer — the per-second re-render never re-picks — keyed on the active locale from the LocaleFace snapshot; locale ids without a bucket fall back to the `chat.deepDiving` key. The 15-second clock and its separate aria-hidden node are unchanged. The pool lives in the locale-owner file, which the client-UI-i18n gate exempts by location; it is not part of the typed `t` dictionary because dictionary values are single strings.
+`ui-chat` owns a frozen phrase pool (`deepDivingPool`: 100 zh + 100 en, aligned one-to-one) inside its locale-owner file, plus a pure `pickDeepDivingPhrase(localeId, random)` selector. `RunningStatus` — the running indicator below the transcript — draws one phrase per mount through a `useState` initializer, so its per-second clock tick re-renders without re-drawing, and reads the locale through the `activeLocale` member of the Chat view inject face. A locale id without a bucket, and a `RunningStatus` mounted without `activeLocale`, keep the static `chat.deepDiving` and `chat.deepDivingFor` copy; a drawn phrase replaces the visible label through `chat.deepDivingPhraseFor` and is what the hidden `role="status"` node announces. The pool lives in the locale-owner file, which the client-UI-i18n gate exempts by location; it is not part of the typed `t` dictionary because dictionary values are single strings.
 
 ## Alternatives considered
 

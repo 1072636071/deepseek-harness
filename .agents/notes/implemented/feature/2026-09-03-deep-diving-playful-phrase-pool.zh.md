@@ -2,13 +2,15 @@
 
 Status: implemented
 
+[English](2026-09-03-deep-diving-playful-phrase-pool.md) | 中文
+
 ## Problem
 
 思考中的轮次状态行每一轮都显示同一句静态文案「深度求索中...」/ "Deep diving..."，长任务等待毫无生气。用户要求换成约 100 条随机俏皮话，并给出锚点句如「token，token，有 token 就干活。」。
 
 ## Decision
 
-`ui-chat` 在其 locale 归属文件内持有一个冻结文案池（`deepDivingPool`：zh/en 各 100 条，逐条对应），外加一个纯函数 `pickDeepDivingPhrase(localeId, random)`。`TurnStatus` 挂载时经 `useState` 初始化器抽取一条——每秒重渲染绝不重抽——语言取自 LocaleFace 快照的 active locale；没有对应桶的 locale 回落到 `chat.deepDiving` key。15 秒时钟及其独立的 aria-hidden 节点保持不变。文案池住在 locale 归属文件内，client-UI-i18n 门禁按文件位置豁免；它不进类型化 `t` 字典，因为字典值只能是单条字符串。
+`ui-chat` 在其 locale 归属文件内持有一个冻结文案池（`deepDivingPool`：zh/en 各 100 条，逐条对应），外加一个纯函数 `pickDeepDivingPhrase(localeId, random)`。`RunningStatus`——对话正文下方的运行指示器——挂载时经 `useState` 初始化器抽取一条，每秒时钟跳格只重渲染、绝不重抽；语言经对话视图 inject 面的 `activeLocale` 成员读取。没有对应桶的 locale id，以及未传 `activeLocale` 的 `RunningStatus`，保持 `chat.deepDiving` 与 `chat.deepDivingFor` 的静态文案；抽到文案时可见标签改由 `chat.deepDivingPhraseFor` 模板承载，隐藏 `role="status"` 节点播报的也是这条文案。文案池住在 locale 归属文件内，client-UI-i18n 门禁按文件位置豁免；它不进类型化 `t` 字典，因为字典值只能是单条字符串。
 
 ## Alternatives considered
 

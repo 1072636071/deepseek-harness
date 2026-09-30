@@ -155,11 +155,6 @@ export interface ChatNodeInjected {
     turnData: SlotHookFactory<'conversation.chat.node', UseChatNodeTurnData>
     disclosure: SlotHookFactory<'conversation.chat.node', UseDisclosure>
   }
-  /**
-   * Active locale id read from the locale face snapshot; selects the deep-diving
-   * status-line phrase pool for the running Turn-process row.
-   */
-  activeLocale?: (() => LocaleId) | undefined
 }
 
 /** Stable owner currency delivered to a keyed Chat renderer. */
@@ -263,6 +258,11 @@ export interface ChatViewInjected {
   }
   forkAt: (seq: number) => void
   fileMentions: (owner: TurnTailOwnerProps) => MarkdownFileMentions | undefined
+  /**
+   * Active locale id read from the locale face snapshot; selects the deep-diving
+   * status-line phrase pool for the running indicator.
+   */
+  activeLocale: () => LocaleId
 }
 
 /** Full Chat view props. */
