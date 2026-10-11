@@ -1237,7 +1237,9 @@ describe('direct-child Queue residency routing', () => {
       .catch((error: unknown) => error)
     expect(rejection).toMatchObject({
       code: 'NOT_RESUMABLE',
-      message: `subagent "${oneShotId}" has no supported continuation state and cannot be resumed; choose a different target`,
+      message: `subagent "${oneShotId}" is a one-shot run and cannot be resumed; to keep interacting with it, `
+        + 'start a new continuable background subagent (delegate through the studio with run_in_background) '
+        + 'or use the teammate id provided by the delegating party',
     })
     expect(String(rejection)).not.toContain('send_message')
   })

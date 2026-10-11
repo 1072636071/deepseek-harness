@@ -427,7 +427,9 @@ export class SubagentContinuationManager {
     )
     if (descriptor === undefined || descriptor.mode !== 'continuable') {
       throw new SubagentError(
-        `subagent "${childId}" has no supported continuation state and cannot be resumed; choose a different target`,
+        `subagent "${childId}" is a one-shot run and cannot be resumed; to keep interacting with it, `
+          + 'start a new continuable background subagent (delegate through the studio with run_in_background) '
+          + 'or use the teammate id provided by the delegating party',
         'NOT_RESUMABLE',
       )
     }

@@ -265,7 +265,7 @@
     },
     {
       "name": "send_message",
-      "description": "Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Returns delivery confirmation, not the agent's answer.",
+      "description": "Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Messaging an idle continuable subagent is the normal way to continue it: the message wakes it and the conversation carries on with its earlier context intact. A one-shot subagent cannot be continued — messaging it fails with a not-resumable error; start a new background subagent instead. Returns delivery confirmation, not the agent's answer.",
       "parameters": {
         "type": "object",
         "properties": {

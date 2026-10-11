@@ -540,7 +540,7 @@ class Tools(Protocol):
     async def read_image(self, args: ReadImageArgs) -> ReadImageOutput:
         """Read a PNG/JPEG/WebP/GIF file and return the image itself. Large images are downscaled automatically; do not install image libraries or create thumbnails to inspect an image."""
     async def send_message(self, args: SendMessageArgs) -> SendMessageOutput:
-        """Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Returns delivery confirmation, not the agent's answer."""
+        """Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Messaging an idle continuable subagent is the normal way to continue it: the message wakes it and the conversation carries on with its earlier context intact. A one-shot subagent cannot be continued — messaging it fails with a not-resumable error; start a new background subagent instead. Returns delivery confirmation, not the agent's answer."""
     async def skill(self, args: SkillArgs) -> SkillOutput:
         """Load the full instructions for a skill. Call it before acting on a task that names or clearly matches a skill in the session skill catalog."""
     async def subagent(self, args: SubagentArgs) -> SubagentOutput1 | SubagentOutput2 | SubagentOutput3:

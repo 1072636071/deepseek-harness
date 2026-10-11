@@ -184,7 +184,7 @@ interface ToolArgsMap {
     /** Path to the image file, resolved by the filesystem backend. */
     file_path: string;
   } & Record<string, JsonValue>;
-  /** Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Returns delivery confirmation, not the agent's answer. */
+  /** Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Messaging an idle continuable subagent is the normal way to continue it: the message wakes it and the conversation carries on with its earlier context intact. A one-shot subagent cannot be continued — messaging it fails with a not-resumable error; start a new background subagent instead. Returns delivery confirmation, not the agent's answer. */
   send_message: {
     /** The agent id of your direct continuable child, or your direct parent when you are a resident continuable child. */
     agent_id: string;
