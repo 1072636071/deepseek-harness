@@ -2,6 +2,8 @@
 
 Status: implemented
 
+[English](2026-09-03-pluggable-hero-headline-slot.md) | 中文
+
 ## Problem
 
 新会话空态的大标题（「探索未之之境」/ "Into the Unknown"）在空态 hero 里直接渲染 `hero.headline` 这个 locale key。外部角色插件（dsh-web-ui-jx）无法替换它，但这句标题恰恰是角色插件应该拥有的文案。该位置没有任何扩展点，而 dsh 的 slot 机制是单向的：slot 的声明与渲染点必须住在宿主代码里，插件自己永远造不出一个会被渲染的槽。

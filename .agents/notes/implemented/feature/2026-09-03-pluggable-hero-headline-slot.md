@@ -2,6 +2,8 @@
 
 Status: implemented
 
+English | [中文](2026-09-03-pluggable-hero-headline-slot.zh.md)
+
 ## Problem
 
 The blank-session hero headline ("探索未至之境" / "Into the Unknown") renders the `hero.headline` locale key directly inside the empty-state hero. External persona plugins (dsh-web-ui-jx) have no way to replace it, yet that headline is exactly the copy a persona plugin should own. There is no extension point at that seat, and dsh slots are one-directional: a slot's declaration and render site must live in host code, so a plugin can never introduce one by itself.

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-29-tools-view-cache-execution-state.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-29-tools-view-cache-execution-state.md
-2026-08-29-tools-view-cache-execution-state.md: 4cd50953e9336f3c03a33c87f028035f64d74b92
-2026-08-29-tools-view-cache-execution-state.zh.md: a40f6d8cbf3bf71f4c7c4b8cb9c5ffae3bc2b59a
+/agent-note-tools-view-caching-single-execution-state-and-result-materialization-short-circuit:
+  en: 80afff601c173c1d
+  zh: f2c1ce0c72870c10
+/agent-note-tools-view-caching-single-execution-state-and-result-materialization-short-circuit/problem:
+  en: 9ce2086bfaad2b17
+  zh: fd30a81c59b599b7
+/agent-note-tools-view-caching-single-execution-state-and-result-materialization-short-circuit/decision:
+  en: b47d2840a4413282
+  zh: bb070b3d2006ded2
+/agent-note-tools-view-caching-single-execution-state-and-result-materialization-short-circuit/alternatives-considered:
+  en: 1dead4d85ab54c9f
+  zh: 0ed7ce579a6d35f2
+/agent-note-tools-view-caching-single-execution-state-and-result-materialization-short-circuit/consequences:
+  en: 22ba60efd3544be2
+  zh: b8d27d2dded43cdf

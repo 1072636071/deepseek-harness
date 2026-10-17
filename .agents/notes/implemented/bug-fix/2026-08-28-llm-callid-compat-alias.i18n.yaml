@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-08-28-llm-callid-compat-alias.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-28-llm-callid-compat-alias.md
+/agent-note-temporary-callid-compatibility-alias-in-dsh-llm:
+  en: 014b1389272053b4
+  zh: 2853a59344f61fb4
+/agent-note-temporary-callid-compatibility-alias-in-dsh-llm/problem:
+  en: bace077f282ef7e1
+  zh: 38aa75d303051086
+/agent-note-temporary-callid-compatibility-alias-in-dsh-llm/decision:
+  en: 40340491425dbd04
+  zh: 1929a1e94b51a759
+/agent-note-temporary-callid-compatibility-alias-in-dsh-llm/alternatives-considered:
+  en: eb53bb1a8c32ae27
+  zh: 368d42d2f8a82372
+/agent-note-temporary-callid-compatibility-alias-in-dsh-llm/consequences:
+  en: 8b0e4ba5cdd5c33a
+  zh: 51d8cc46280bf4d6

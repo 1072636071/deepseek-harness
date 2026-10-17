@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-29-subagent-provider-lifecycle-skeleton.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-29-subagent-provider-lifecycle-skeleton.md
-2026-08-29-subagent-provider-lifecycle-skeleton.md: 25f18722bd9d605bc311e7aea65a6c6b73979ef8
-2026-08-29-subagent-provider-lifecycle-skeleton.zh.md: cb0bd3faa5196ad518284bb41abae842ec192683
+/agent-note-shared-out-of-process-subagent-provider-lifecycle-skeleton:
+  en: 7f52db01d22fd801
+  zh: f01e02051c1e4ba3
+/agent-note-shared-out-of-process-subagent-provider-lifecycle-skeleton/problem:
+  en: 2a71c596b4b812df
+  zh: 74fe5478d15041c3
+/agent-note-shared-out-of-process-subagent-provider-lifecycle-skeleton/decision:
+  en: 873fb93db5333089
+  zh: 41eccb9cb4fef84d
+/agent-note-shared-out-of-process-subagent-provider-lifecycle-skeleton/alternatives-considered:
+  en: 99286d6678ff60d0
+  zh: 411134c9f407fcf7
+/agent-note-shared-out-of-process-subagent-provider-lifecycle-skeleton/consequences:
+  en: 9ab46e6e1c5113e1
+  zh: 3f57077c74541f35

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-29-llm-error-normalization.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-29-llm-error-normalization.md
-2026-08-29-llm-error-normalization.md: a6dc2dcde847a351ada296677158b86a3ba6b206
-2026-08-29-llm-error-normalization.zh.md: 274d72a7ea33f2d6459742e53121bde9f9966366
+/agent-note-shared-llm-http-failure-classification:
+  en: a12eca1212f6b88d
+  zh: 990a29d403040b63
+/agent-note-shared-llm-http-failure-classification/problem:
+  en: 4fa61c8bd7d0e03c
+  zh: 55c0154f1ade4521
+/agent-note-shared-llm-http-failure-classification/decision:
+  en: 44ed9e919271476f
+  zh: fe0034ffad49b2df
+/agent-note-shared-llm-http-failure-classification/alternatives-considered:
+  en: 255e83ff9ebf4d5e
+  zh: 2cf79a865dc9be1e
+/agent-note-shared-llm-http-failure-classification/consequences:
+  en: 22e0f223845dfb22
+  zh: 18eae64d7ffa5ebe

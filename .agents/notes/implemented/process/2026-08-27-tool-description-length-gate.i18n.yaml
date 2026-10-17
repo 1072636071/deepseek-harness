@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-27-tool-description-length-gate.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-27-tool-description-length-gate.md
-2026-08-27-tool-description-length-gate.md: ad3681c98bfd7973a3c2cce967ae8a8536a2173a
-2026-08-27-tool-description-length-gate.zh.md: 54f708debfe2e595d11595683ed046c4d959fe75
+/agent-note-tool-description-length-gate:
+  en: 8ade3f4d5999651c
+  zh: 4f8443645b0e9109
+/agent-note-tool-description-length-gate/problem:
+  en: 49e998b5d58d185b
+  zh: 1ec8461d7bbaf72e
+/agent-note-tool-description-length-gate/decision:
+  en: 59f81f4521e3291f
+  zh: ec3473ddff45e517
+/agent-note-tool-description-length-gate/alternatives-considered:
+  en: eb12a93947ecef2f
+  zh: ea78e31dd7fab6c2
+/agent-note-tool-description-length-gate/consequences:
+  en: 70d4b5b9e3243329
+  zh: 4748e501469f300c

@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-09-03-pluggable-hero-headline-slot.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-03-pluggable-hero-headline-slot.md
-2026-09-03-pluggable-hero-headline-slot.md: 0bd210353fe7f1555a8359882e3fb2714d7b2b35
-2026-09-03-pluggable-hero-headline-slot.zh.md: e3d81c94b119af29a86153e590b277b33d8bb5bc
+/agent-note-pluggable-hero-headline-slot:
+  en: c576851307e2f259
+  zh: 5ed541ccac5e0ea8
+/agent-note-pluggable-hero-headline-slot/problem:
+  en: 966dbe1820e4946f
+  zh: f3eda0a41a86c137
+/agent-note-pluggable-hero-headline-slot/decision:
+  en: c1a8c6962620f06f
+  zh: 2d84003f0b923239
+/agent-note-pluggable-hero-headline-slot/alternatives-considered:
+  en: bb50618524fec766
+  zh: 707c8d9aa7a64bca
+/agent-note-pluggable-hero-headline-slot/consequences:
+  en: fafec3c35ae213c1
+  zh: 645098c0c5c7b721

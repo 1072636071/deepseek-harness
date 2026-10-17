@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-29-low-severity-hotspot-cleanups.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-29-low-severity-hotspot-cleanups.md
-2026-08-29-low-severity-hotspot-cleanups.md: 60c2f82071b249384729d77990e1b2e1bcb65ca4
-2026-08-29-low-severity-hotspot-cleanups.zh.md: 462c883e5a3473269c713ccab0dc892329b9ed99
+/agent-note-low-severity-hotspot-cleanups-six-items:
+  en: 718a07198cf8eddc
+  zh: 6c7dcee28472dc45
+/agent-note-low-severity-hotspot-cleanups-six-items/problem:
+  en: e64e0e1b52197728
+  zh: 6c6aa7e925da878b
+/agent-note-low-severity-hotspot-cleanups-six-items/decision:
+  en: fb1423df14d18db4
+  zh: e7800c33aaee7355
+/agent-note-low-severity-hotspot-cleanups-six-items/alternatives-considered:
+  en: 4ff5f9ada9381ebe
+  zh: 7f749944efeaea23
+/agent-note-low-severity-hotspot-cleanups-six-items/consequences:
+  en: ae5fe3a3524cf621
+  zh: 8f7717728b5557b7

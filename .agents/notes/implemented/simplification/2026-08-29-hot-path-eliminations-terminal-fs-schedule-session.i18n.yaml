@@ -1,6 +1,19 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
+# Bilingual-pair consistency record for 2026-08-29-hot-path-eliminations-terminal-fs-schedule-session.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/simplification/2026-08-29-hot-path-eliminations-terminal-fs-schedule-session.md
-2026-08-29-hot-path-eliminations-terminal-fs-schedule-session.md: 89822074f883caeee83165da85f7d5de4bd8ed9e
-2026-08-29-hot-path-eliminations-terminal-fs-schedule-session.zh.md: b78344f115fc46d865e4b2d0950ac8496f478533
+/agent-note-hot-path-eliminations-across-terminal-filesystem-schedule-and-session:
+  en: 318060f84312f9f7
+  zh: 92a861e4f1490a37
+/agent-note-hot-path-eliminations-across-terminal-filesystem-schedule-and-session/problem:
+  en: 0f91221342f14b77
+  zh: 9f945b7b22c18b33
+/agent-note-hot-path-eliminations-across-terminal-filesystem-schedule-and-session/decision:
+  en: ec9ca927e81e3709
+  zh: a96f056f8c5d1ce2
+/agent-note-hot-path-eliminations-across-terminal-filesystem-schedule-and-session/alternatives-considered:
+  en: e30cb503230ea258
+  zh: 5a7572733ecfae47
+/agent-note-hot-path-eliminations-across-terminal-filesystem-schedule-and-session/consequences:
+  en: 493a276eab5d7c02
+  zh: c8ea7bfceb574db4
