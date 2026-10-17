@@ -12,6 +12,7 @@ import { RemoteError, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply, inject } from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { WorkspaceBrowserInjected, WorkspacePickerInjected } from '@deepseek-ai/dsh-client-ui-workspace/client'
+import type { WorkspaceFoldersSnapshot } from '@deepseek-ai/dsh-api-workspace-folders/client'
 import {
   type ArchiveSessionInjected, type ForkSessionInjected, menuOpenStateFactory, type PinSessionInjected,
   type RenameSessionInjected, type RowToastInjected, type SessionArchiveConfirmInjected, type SessionRenameDialogInjected,
@@ -589,6 +590,43 @@ describe('ui-workspace apply', () => {
     const browser = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
     await expect(browser.searchSessions('needle', new AbortController().signal))
       .rejects.toThrow('index unavailable')
+  })
+
+  it('rebinds the browser face when the folder capability arrives after apply', async () => {
+    const b = await bench()
+    declare(b.slots, 'sidebar.workspaces')
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    // No composed folder service: the first face carries the empty projection.
+    const absent = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
+    expect(absent.folderSupport).toBe(false)
+    expect(absent.hooks.folders.getSnapshot()).toMatchObject({ folders: [], state: 'idle' })
+
+    // A late half registers the service the way the real plugin does: provide
+    // during a LOADING fiber, so the service event fires only at activation.
+    const foldersSource = createSnapshotStore<WorkspaceFoldersSnapshot>({
+      folders: [], state: 'loading', error: null,
+    })
+    const folders = {
+      list: foldersSource as never,
+      create: vi.fn(async () => undefined),
+      rename: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+      setExpanded: vi.fn(async () => undefined),
+      setMembership: vi.fn(async () => undefined),
+    }
+    const late = b.ctx.plugin({ apply: (lateCtx: Context) => { lateCtx.provide('workspaceFolders', folders) } })
+    await late.await()
+
+    // The rebind replaced the entry: the fresh face carries the live service,
+    // its projection source, and the delegated mutation.
+    const arrived = faceOf(b.slots.entries('sidebar.workspaces')[0]!) as WorkspaceBrowserInjected
+    expect(arrived.folderSupport).toBe(true)
+    expect(arrived.hooks.folders.getSnapshot()).toEqual({ folders: [], state: 'loading', error: null })
+    await arrived.createFolder('Research')
+    expect(folders.create).toHaveBeenCalledWith('Research')
+
+    // The rebind runs once per fiber: a second service event re-registers nothing new.
+    expect(b.slots.entries('sidebar.workspaces')).toHaveLength(1)
   })
 
   it('unregisters every entry on teardown', async () => {

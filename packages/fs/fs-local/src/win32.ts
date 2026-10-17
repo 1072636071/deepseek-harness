@@ -5,6 +5,7 @@
  */
 
 import { toNamespacedPath } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 
 type GetFileSecurityW = (
   path: string,
@@ -40,6 +41,35 @@ const PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
 const ERROR_FILE_NOT_FOUND = 2
 const ERROR_PATH_NOT_FOUND = 3
 const ERROR_ACCESS_DENIED = 5
+/** ERROR_SHARING_VIOLATION — the replaced/staging file is still held open by another process. */
+const ERROR_SHARING_VIOLATION = 32
+/** ERROR_LOCK_VIOLATION — a byte-range lock still covers the replaced file. */
+const ERROR_LOCK_VIOLATION = 33
+/** ERROR_UNABLE_TO_REMOVE_REPLACED — the replaced file could not be unlinked during the swap. */
+const ERROR_UNABLE_TO_REMOVE_REPLACED = 1175
+
+/**
+ * Win32 codes worth retrying: the replacement is refused because some other
+ * process momentarily holds the replaced file (an indexer, antivirus scanner,
+ * or a just-closed handle whose kernel teardown has not completed). On this
+ * platform such sharing conflicts are transient by construction — the
+ * documented remedy is to retry — and a failed `ReplaceFileW` leaves both the
+ * target and the staging file intact, so a retry re-attempts the same swap
+ * without rewriting any content.
+ */
+const TRANSIENT_REPLACE_CODES: ReadonlySet<number> = new Set([
+  ERROR_SHARING_VIOLATION,
+  ERROR_LOCK_VIOLATION,
+  ERROR_UNABLE_TO_REMOVE_REPLACED,
+])
+
+/** Total `ReplaceFileW` attempts (1 initial + retries) before surfacing the failure. */
+const REPLACE_ATTEMPTS = 5
+
+/** Delay before retry N (0-based): 5ms, 10ms, 20ms, 40ms — bounded, no busy loop. */
+function replaceRetryDelayMs(retryIndex: number): number {
+  return 5 * 2 ** retryIndex
+}
 
 let bindings: Win32Bindings | undefined
 
@@ -116,19 +146,27 @@ export async function copyFileDaclWin32(source: string, destination: string): Pr
 
 /**
  * Replace a Windows file while preserving the replaced file's ACL and other replace metadata.
+ *
+ * A sharing conflict on the replaced file is transient on Windows (an indexer, antivirus
+ * scanner, or a just-closed handle still being torn down), so the documented remedy is to
+ * retry. `ReplaceFileW` is atomic and all-or-nothing: when it fails, the target keeps its
+ * original content and the closed staging file is still present, so a retry re-attempts the
+ * same swap with no content rewrite. Only `TRANSIENT_REPLACE_CODES` are retried; every other
+ * failure (a missing target, a denied path) is permanent and surfaces immediately.
+ *
  * @param replaced - existing destination file.
  * @param replacement - closed staging file on the same volume.
  */
 export async function replaceFileWin32(replaced: string, replacement: string): Promise<void> {
   const api = await win32()
-  if (api.replaceFileW(
-    toNamespacedPath(replaced),
-    toNamespacedPath(replacement),
-    null,
-    0,
-    null,
-    null,
-  ) === 0) {
-    throw win32Error('ReplaceFileW', api.getLastError(), replaced)
+  const nativeReplaced = toNamespacedPath(replaced)
+  const nativeReplacement = toNamespacedPath(replacement)
+  for (let attempt = 0; ; attempt++) {
+    if (api.replaceFileW(nativeReplaced, nativeReplacement, null, 0, null, null) !== 0) return
+    const win32Code = api.getLastError()
+    if (attempt >= REPLACE_ATTEMPTS - 1 || !TRANSIENT_REPLACE_CODES.has(win32Code)) {
+      throw win32Error('ReplaceFileW', win32Code, replaced)
+    }
+    await delay(replaceRetryDelayMs(attempt))
   }
 }

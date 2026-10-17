@@ -147,6 +147,11 @@
     - id: workspace-controller
       name: '@deepseek-ai/dsh-api-workspace-controller'
 
+    # User-defined Workspace folders: their own storage domain beside the
+    # Workspace registry, so grouping state never reshapes Workspace records.
+    - id: workspace-folders
+      name: '@deepseek-ai/dsh-api-workspace-folders'
+
     - id: cordis-host-runner
       name: '@deepseek-ai/dsh-cordis-host-runner'
 

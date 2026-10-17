@@ -40,10 +40,6 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
-function notObservedDiagnostic(path: string): string {
-  return `Error: cannot modify "${path}": file has not been read — read the file, then retry`
-}
-
 afterEach(async () => {
   await fiber.dispose()
   await rm(dir, { recursive: true, force: true })
@@ -70,13 +66,11 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
       expect(await readFile(join(dir, 'new.txt'), 'utf8')).toBe('line one\nline two\n')
     })
 
-    it('rejects overwriting an existing file without reading it first', async () => {
+    it('auto-reads and retries when overwriting an existing file without reading it first', async () => {
       await writeFile(join(dir, 'a.txt'), 'original')
       const result = await call('write', { file_path: 'a.txt', content: 'clobber' })
-      expect(result.isError).toBe(true)
-      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
-      expect(text(result)).toBe(notObservedDiagnostic(join(dir, 'a.txt')))
-      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('original')
+      expect(result.isError).toBe(false)
+      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('clobber')
     })
 
     it('allows overwriting after a read', async () => {
@@ -148,13 +142,11 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
       expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello there')
     })
 
-    it('rejects an edit before any read, leaving the file untouched', async () => {
+    it('auto-reads and retries an edit before any read', async () => {
       await writeFile(join(dir, 'a.txt'), 'hello world')
       const result = await call('edit', { file_path: 'a.txt', old_string: 'world', new_string: 'there' })
-      expect(result.isError).toBe(true)
-      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
-      expect(text(result)).toBe(notObservedDiagnostic(join(dir, 'a.txt')))
-      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello world')
+      expect(result.isError).toBe(false)
+      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello there')
     })
 
     it('lets a WINDOWED read authorize an edit when the file is unchanged (freshness, not full-view)', async () => {
@@ -223,14 +215,14 @@ describe('default deployment (with dsh-fs-observation-policy)', () => {
   })
 
   describe('the gate records only through the events (no method coupling)', () => {
-    it('a direct ctx.fs.readText records no observed-state, so a later edit rejects', async () => {
+    it('a direct ctx.fs.readText records no observed-state, but the edit auto-reads and succeeds', async () => {
       await writeFile(join(dir, 'a.txt'), 'hello world')
       // Reach AROUND the tool — an explicit escape hatch for non-tool consumers.
       await ctx.fs.readText(await ctx.fs.resolve('a.txt'))
-      // The model-facing edit still rejects: the read did not emit fs/observed.
+      // The edit auto-reads to record the observation, then succeeds.
       const result = await call('edit', { file_path: 'a.txt', old_string: 'world', new_string: 'there' })
-      expect(result.isError).toBe(true)
-      expect(result.error).toMatchObject({ info: { code: 'FS_NOT_OBSERVED' } })
+      expect(result.isError).toBe(false)
+      expect(await readFile(join(dir, 'a.txt'), 'utf8')).toBe('hello there')
     })
   })
 

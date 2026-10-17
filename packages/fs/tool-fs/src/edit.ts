@@ -8,6 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DiffCallView, DiffResultView, ToolResult } from '@deepseek-ai/dsh-tools'
+import { FsError } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-fs'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
 import { remediateFsError } from './error.ts'
@@ -133,10 +134,36 @@ export function applyEditTool(ctx: Context, sandbox: FsSandboxController): void 
           sandboxPolicy,
         )
       } catch (error: unknown) {
-        // A sandbox denial becomes the shared [sandbox: …] marker (the model
-        // recognizes it from bash); guarded mutation failures receive their
-        // stable model-facing diagnostic; anything else passes through.
-        throw remediateFsError(sandbox.mapError(error, sandboxPolicy), target.displayPath)
+        // Auto-read recovery: when the policy rejects with FS_NOT_OBSERVED (file not read),
+        // read the file to record the observation, then retry the edit once. This saves
+        // a model round-trip (read → retry) while the old_string match acts as an
+        // optimistic lock against concurrent modifications.
+        if (error instanceof FsError && error.code === 'FS_NOT_OBSERVED') {
+          const info = await ctx.fs.stat(target, exec.signal)
+          if (info !== undefined) {
+            ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
+            try {
+              const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+              outcome = await ctx.fs.editText(
+                target,
+                { oldString: input.oldString, newString: input.newString, replaceAll: input.replaceAll },
+                intent,
+                exec.signal,
+                sandboxPolicy,
+              )
+            } catch (retryError: unknown) {
+              throw remediateFsError(sandbox.mapError(retryError, sandboxPolicy), target.displayPath)
+            }
+          } else {
+            // File does not exist; preserve the original NOT_OBSERVED diagnostic.
+            throw remediateFsError(sandbox.mapError(error, sandboxPolicy), target.displayPath)
+          }
+        } else {
+          // A sandbox denial becomes the shared [sandbox: …] marker (the model
+          // recognizes it from bash); guarded mutation failures receive their
+          // stable model-facing diagnostic; anything else passes through.
+          throw remediateFsError(sandbox.mapError(error, sandboxPolicy), target.displayPath)
+        }
       }
       ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, exec)
       return {

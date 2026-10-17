@@ -316,6 +316,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Owns Workspace commands and reconnect-safe Workspace state delivery through the generated Remote namespace.',
   },
   {
+    key: 'workspaceFolders',
+    pkg: 'api-workspace-folders',
+    title: 'User-defined Workspace folder store',
+    mode: 'core',
+    note: 'Persists navigation-only Workspace folders in their own storage domain, so grouping changes never rewrite Workspace registry records, and serves the folder projection through the generated Remote namespace.',
+  },
+  {
     key: 'directoryPickerController',
     pkg: 'api-workspace-controller',
     title: 'Host directory-picking Remote controller',

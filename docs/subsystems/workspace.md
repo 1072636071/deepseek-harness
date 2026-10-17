@@ -473,6 +473,62 @@ Host Remote file reads and workspace directory observations over the composed fi
 
 Source: [`packages/api/workspace-files/src/index.ts`](../../packages/api/workspace-files/src/index.ts)
 
+<a id="ctxworkspacefolders--workspacefolders"></a>
+
+### `ctx.workspaceFolders` — `WorkspaceFolders`
+
+Durable folder registry over the Workspace registry. Startup waits for `storageDomain` and `workspaceRegistry`; folding is independent of the registry's own bootstrap, so folders whose members are all gone still open.
+
+```ts cordis-catalog
+/**
+ * Read the complete folder projection in durable folder order.
+ * @returns every folder with its current member Workspaces.
+ */
+@Remote('list') list(): WorkspaceFoldersValue
+
+/**
+ * Create one folder with a unique title.
+ * @param request - new folder title.
+ * @returns the complete folder projection.
+ */
+@Remote('create') create(request: WorkspaceFolderCreateRequest): Promise<WorkspaceFoldersValue>
+
+/**
+ * Rename one folder to a unique title.
+ * @param request - folder identity and proposed title.
+ * @returns the complete folder projection.
+ */
+@Remote('rename') rename(request: WorkspaceFolderRenameRequest): Promise<WorkspaceFoldersValue>
+
+/**
+ * Delete one folder. Its Workspaces return to the ungrouped list; no
+ * Workspace registration, directory, or Session log is touched. An unknown
+ * folder resolves without writing.
+ * @param request - folder identity to remove.
+ * @returns the complete folder projection.
+ */
+@Remote('delete') delete(request: WorkspaceFolderDeleteRequest): Promise<WorkspaceFoldersValue>
+
+/**
+ * Persist one folder's expansion state.
+ * @param request - folder identity and the desired expansion.
+ * @returns the complete folder projection.
+ */
+@Remote('setExpanded') setExpanded(request: WorkspaceFolderExpandedRequest): Promise<WorkspaceFoldersValue>
+
+/**
+ * Move one Workspace into a folder, or out of every folder when the request
+ * omits `folderId`. A Workspace belongs to at most one folder, so a move
+ * removes it from its previous folder in the same operation. The moved
+ * Workspace lands last in its destination folder's member order.
+ * @param request - Workspace identity and the destination folder.
+ * @returns the complete folder projection.
+ */
+@Remote('setMembership') setMembership(request: WorkspaceFolderMembershipRequest): Promise<WorkspaceFoldersValue>
+```
+
+Source: [`packages/api/workspace-folders/src/index.ts`](../../packages/api/workspace-folders/src/index.ts)
+
 <a id="ctxworkspaceregistry--workspaceregistry"></a>
 
 ### `ctx.workspaceRegistry` — `WorkspaceRegistry`

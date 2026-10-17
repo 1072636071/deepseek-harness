@@ -286,10 +286,25 @@ async function replaceInFile(
   }
   const sandboxPolicy = policy.resolve(exec)
   const target = await resolveTarget(ctx, path, exec.signal)
-  const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+  let intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
   const oldValue = requiredForCommand(oldStr, 'old_str', 'str_replace', false)
   const newValue = newStr ?? ''
   const info = await statExisting(ctx, target, 'str_replace', exec)
+  // Auto-read recovery: when the policy rejects with FS_NOT_OBSERVED (file not read),
+  // read the file to record the observation, then retry the edit once. This saves
+  // a model round-trip while the old_str match acts as an optimistic lock.
+  if (intent === undefined) {
+    try {
+      intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+    } catch (error: unknown) {
+      if (error instanceof FsError && error.code === 'FS_NOT_OBSERVED') {
+        ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
+        intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+      } else {
+        throw policy.mapError(error, sandboxPolicy)
+      }
+    }
+  }
   if (info.type !== 'file') {
     throw new FsError(`cannot edit "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
   }
@@ -339,8 +354,21 @@ async function insertInFile(
   const value = requiredForCommand(newStr, 'new_str', 'insert')
   const sandboxPolicy = policy.resolve(exec)
   const target = await resolveTarget(ctx, path, exec.signal)
-  const intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+  let intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
   const info = await statExisting(ctx, target, 'insert', exec)
+  // Auto-read recovery: same as replaceInFile.
+  if (intent === undefined) {
+    try {
+      intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+    } catch (error: unknown) {
+      if (error instanceof FsError && error.code === 'FS_NOT_OBSERVED') {
+        ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
+        intent = await ctx.waterfall('fs/edit-intent', target, exec, () => undefined)
+      } else {
+        throw policy.mapError(error, sandboxPolicy)
+      }
+    }
+  }
   if (info.type !== 'file') {
     throw new FsError(`cannot insert into "${target.displayPath}": not a regular file`, 'FS_NOT_REGULAR_FILE')
   }

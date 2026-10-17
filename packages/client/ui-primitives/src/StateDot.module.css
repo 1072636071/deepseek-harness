@@ -31,6 +31,12 @@
   color: var(--dsw-alias-state-idle-primary);
 }
 
+/* Info marks a live subject that asks nothing of the reader — distinct from
+ * idle, which says nothing is there to act on. */
+.dot[data-state='info'] {
+  color: var(--dsw-alias-state-info-primary);
+}
+
 /* Ongoing is the sole non-dot state: a quiet full ring sits behind a centered
  * breathing arc while the complete glyph rotates continuously. Both animations
  * share one 1.5s period so pinning their start times aligns them together. */

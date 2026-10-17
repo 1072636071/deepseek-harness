@@ -25,6 +25,7 @@ import type {
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { HostObservable, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { WorkspaceFoldersSnapshot } from '@deepseek-ai/dsh-api-workspace-folders/client'
 // Type-only: pulls the Controller service merges.
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
@@ -85,6 +86,21 @@ declare module '@deepseek-ai/dsh-api-session-controller/client' {
 /** Dictionary namespace owned by this plugin. */
 const NS = 'workspace'
 
+/** Folder projection served when no folder capability is composed. */
+const EMPTY_FOLDER_SNAPSHOT: import('@deepseek-ai/dsh-api-workspace-folders/client').WorkspaceFoldersSnapshot = {
+  folders: [],
+  state: 'idle',
+  error: null,
+}
+
+/** The optional Client folder face as this plugin reads it. */
+type FolderService = import('@deepseek-ai/dsh-api-workspace-folders/client').IWorkspaceFolders
+
+/** Read the optional folder capability; typed at this one boundary. */
+function readFolderService(ctx: Context): FolderService | undefined {
+  return ctx.get('workspaceFolders')
+}
+
 /**
  * Required services (cordis fiber inject). The target slots are declared by
  * the ui-sidebar / ui-conversation applies, whose activation order relative
@@ -106,6 +122,16 @@ export const inject = [
 export function apply(ctx: Context): void {
   const sessions = ctx.get('sessions') as ISessions
   const workspaces = ctx.get('workspaces') as IWorkspaces
+  // Optional capability: the browsing region separates user folders from the
+  // Workspace registry, so a composition without the folder plugin keeps the
+  // plain Workspace list and this surface reads an empty projection. `let`:
+  // the late-arrival rebind below re-resolves this before re-registering the
+  // browser, so the fresh entry's inject face sees the arrived service.
+  let folderService = readFolderService(ctx)
+  const emptyFolders: HostObservable<WorkspaceFoldersSnapshot> = {
+    getSnapshot: () => EMPTY_FOLDER_SNAPSHOT,
+    subscribe: () => () => {},
+  }
   // One viewing-store instance, created here as ui-layout does for its layout
   // store: the browser declares the handle, and the UiWorkspace service writes
   // view order through the same instance the renderer hands the browser.
@@ -249,35 +275,74 @@ export function apply(ctx: Context): void {
     closeAddWorkspace: shortcutControls.closeAdd,
     setDirectoryBusy: shortcutControls.directoryBusy,
     dismissForkError: shortcutControls.dismissForkError,
-    hooks: { directoryFlow: browserFlowSource, hostInfo, workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog },
+    hooks: {
+      directoryFlow: browserFlowSource,
+      hostInfo,
+      workspaceShortcuts: shortcutControls.state,
+      shortcuts: ctx.shortcuts.catalog,
+      folders: folderService?.list ?? emptyFolders,
+    },
+    folderSupport: folderService !== undefined,
+    createFolder: title => folderService?.create(title) ?? Promise.resolve(undefined),
+    renameFolder: (folderId, title) => folderService?.rename(folderId as never, title) ?? Promise.resolve(undefined),
+    deleteFolder: folderId => folderService?.delete(folderId as never) ?? Promise.resolve(undefined),
+    setFolderExpanded: (folderId, expanded) =>
+      folderService?.setExpanded(folderId as never, expanded) ?? Promise.resolve(undefined),
+    setFolderMembership: (workspaceId, folderId) =>
+      folderService?.setMembership(workspaceId, folderId as never) ?? Promise.resolve(undefined),
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),
     hooks: { directoryFlow: pickerFlowSource },
   })
   // Each registration declares its owned children in the same call; slot
-  // injection follows both the owner and declaration HMR lifetimes.
-  ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
-    {
-      name: 'sidebar.workspaces',
-      children: {
-        'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
-        // Every row entry reads the menu's open state through a hook bound
-        // from the row's render occurrence (the owner passes the state pair
-        // as hookContext).
-        'sidebar.workspaces.session.menu.item': {
-          kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
+  // injection follows both the owner and declaration HMR lifetimes. The
+  // whole browser assembly re-registers when the optional folder capability
+  // arrives after this apply: the injected face bakes `folderSupport` at
+  // registration time, so a late arrival must mint a fresh entry (a new
+  // StoredEntry identity remounts the outlet through its React key). The
+  // previous injection controller is retired first — a `single` slot admits
+  // one occupant per priority. Cordis `provide` rejects a duplicate service
+  // name, so this rebind runs at most once per fiber lifetime.
+  let browserInjection: (() => void) | undefined
+  const registerBrowser = (): void => {
+    browserInjection?.()
+    browserInjection = ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
+      {
+        name: 'sidebar.workspaces',
+        children: {
+          'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
+          // Every row entry reads the menu's open state through a hook bound
+          // from the row's render occurrence (the owner passes the state pair
+          // as hookContext).
+          'sidebar.workspaces.session.menu.item': {
+            kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
+          },
+          'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
+          'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+          'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
         },
-        'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
-        'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
-        'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
+        store: viewStore,
+        inject: browserInjected,
+        locale: NS,
       },
-      store: viewStore,
-      inject: browserInjected,
-      locale: NS,
-    },
-    WorkspaceBrowser,
-  ))
+      WorkspaceBrowser,
+    ))
+  }
+  registerBrowser()
+  if (folderService === undefined) {
+    ctx.effect(() => {
+      let done = false
+      const unsubscribe = ctx.on('internal/service', (name: string) => {
+        if (done || name !== 'workspaceFolders' || readFolderService(ctx) === undefined) return
+        done = true
+        folderService = readFolderService(ctx)
+        unsubscribe()
+        registerBrowser()
+      })
+      return () => { unsubscribe() }
+    }, 'ui-workspace: late folder capability')
+  }
   // The shipped row actions take the same route as a plugin's: `slots.inject`
   // waits for the browser registration above to declare each list, and the
   // entries leave with it. Orders step by 100 so a plugin entry can land

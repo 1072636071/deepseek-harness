@@ -20,6 +20,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     imageLimits: null
     /** Durable model selection already used by a request and still pending for a later request. */
     modelSelection: ModelSelectionProjectionState
+    /** Durable outcome of the latest closed turn. */
+    sessionTurnOutcome: SessionTurnOutcome
   }
   interface SessionProjectionMap {
     /** Persisted facts used to summarize a Session without activating it. */
@@ -28,6 +30,8 @@ declare module '@deepseek-ai/dsh-session-projection/types' {
     imageLimits: ImageAttachmentLimits
     /** Durable model selection already used and selected for the next request. */
     modelSelection: ModelSelectionProjection
+    /** How the latest turn ended, so a list can flag a Session that needs a human. */
+    sessionTurnOutcome: SessionTurnOutcome
   }
 }
 
@@ -47,6 +51,17 @@ export interface SessionListMetadata {
   readonly blank: boolean
   /** Latest human-authored prompt time in the folded prefix. */
   readonly lastPromptAt: number | null
+}
+
+/**
+ * How the latest closed turn ended, as the {@link TurnEndReason} discriminant.
+ * Only facts are projected: which outcomes deserve attention is a client
+ * decision, and a `TurnEndReasonMap` merged by another plugin contributes an
+ * unrecognized discriminant rather than an error.
+ */
+export interface SessionTurnOutcome {
+  /** Discriminant of the latest `turn/end` reason, or `null` before the first closed turn. */
+  readonly lastTurnEnd: string | null
 }
 
 /**

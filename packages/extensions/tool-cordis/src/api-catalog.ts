@@ -3681,6 +3681,49 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'workspaceFolders',
+    summary: 'Durable folder registry over the Workspace registry.',
+    description: 'Durable folder registry over the Workspace registry. Startup waits for `storageDomain` and `workspaceRegistry`; folding is independent of the registry\'s own bootstrap, so folders whose members are all gone still open.',
+    methods: [
+      {
+        signature: '@Remote(\'list\') list(): WorkspaceFoldersValue',
+        description: 'Read the complete folder projection in durable folder order.',
+        parameters: [],
+        returns: 'every folder with its current member Workspaces.',
+      },
+      {
+        signature: '@Remote(\'create\') create(request: WorkspaceFolderCreateRequest): Promise<WorkspaceFoldersValue>',
+        description: 'Create one folder with a unique title.',
+        parameters: [{ name: 'request', description: 'new folder title.' }],
+        returns: 'the complete folder projection.',
+      },
+      {
+        signature: '@Remote(\'rename\') rename(request: WorkspaceFolderRenameRequest): Promise<WorkspaceFoldersValue>',
+        description: 'Rename one folder to a unique title.',
+        parameters: [{ name: 'request', description: 'folder identity and proposed title.' }],
+        returns: 'the complete folder projection.',
+      },
+      {
+        signature: '@Remote(\'delete\') delete(request: WorkspaceFolderDeleteRequest): Promise<WorkspaceFoldersValue>',
+        description: 'Delete one folder. Its Workspaces return to the ungrouped list; no Workspace registration, directory, or Session log is touched. An unknown folder resolves without writing.',
+        parameters: [{ name: 'request', description: 'folder identity to remove.' }],
+        returns: 'the complete folder projection.',
+      },
+      {
+        signature: '@Remote(\'setExpanded\') setExpanded(request: WorkspaceFolderExpandedRequest): Promise<WorkspaceFoldersValue>',
+        description: 'Persist one folder\'s expansion state.',
+        parameters: [{ name: 'request', description: 'folder identity and the desired expansion.' }],
+        returns: 'the complete folder projection.',
+      },
+      {
+        signature: '@Remote(\'setMembership\') setMembership(request: WorkspaceFolderMembershipRequest): Promise<WorkspaceFoldersValue>',
+        description: 'Move one Workspace into a folder, or out of every folder when the request omits `folderId`. A Workspace belongs to at most one folder, so a move removes it from its previous folder in the same operation. The moved Workspace lands last in its destination folder\'s member order.',
+        parameters: [{ name: 'request', description: 'Workspace identity and the destination folder.' }],
+        returns: 'the complete folder projection.',
+      },
+    ],
+  },
+  {
     key: 'workspaceRegistry',
     summary: 'Durable workspace registry.',
     description: 'Durable workspace registry. Startup waits for `sessionPersistence`, builds one canonical-cwd header index, and completes the one-time history bootstrap before the service becomes active. The persistence dependency is mandatory so an unavailable peer can never be mistaken for an empty history and commit the initialized marker.',
@@ -8104,6 +8147,38 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceFileWatchFrame',
     declaration: 'export type WorkspaceFileWatchFrame = {\n    readonly kind: \'ready\';\n} | {\n    readonly kind: \'change\';\n    readonly change: WorkspaceFileChange;\n};',
+  },
+  {
+    name: 'WorkspaceFolderCreateRequest',
+    declaration: 'export interface WorkspaceFolderCreateRequest {\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceFolderDeleteRequest',
+    declaration: 'export interface WorkspaceFolderDeleteRequest {\n    readonly folderId: WorkspaceFolderId;\n}',
+  },
+  {
+    name: 'WorkspaceFolderExpandedRequest',
+    declaration: 'export interface WorkspaceFolderExpandedRequest {\n    readonly folderId: WorkspaceFolderId;\n    readonly expanded: boolean;\n}',
+  },
+  {
+    name: 'WorkspaceFolderId',
+    declaration: 'export type WorkspaceFolderId = Branded<\'WorkspaceFolderId\'>;',
+  },
+  {
+    name: 'WorkspaceFolderMembershipRequest',
+    declaration: 'export interface WorkspaceFolderMembershipRequest {\n    readonly workspaceId: WorkspaceId;\n    readonly folderId?: WorkspaceFolderId;\n}',
+  },
+  {
+    name: 'WorkspaceFolderRenameRequest',
+    declaration: 'export interface WorkspaceFolderRenameRequest {\n    readonly folderId: WorkspaceFolderId;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'WorkspaceFoldersValue',
+    declaration: 'export interface WorkspaceFoldersValue {\n    readonly folders: readonly WorkspaceFolderView[];\n}',
+  },
+  {
+    name: 'WorkspaceFolderView',
+    declaration: 'export interface WorkspaceFolderView {\n    readonly folderId: WorkspaceFolderId;\n    readonly title: string;\n    readonly workspaceIds: readonly WorkspaceId[];\n    readonly expanded: boolean;\n    readonly createdAt: string;\n}',
   },
   {
     name: 'WorkspaceFollowFrame',

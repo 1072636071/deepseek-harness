@@ -8,6 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DiffCallView, DiffResultView, ToolResult } from '@deepseek-ai/dsh-tools'
+import { FsError } from '@deepseek-ai/dsh-fs'
 import type { FsWriteOutcome } from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-fs'
 import { computeHunkDiffs, diffsFromMeta } from './diff.ts'
@@ -112,15 +113,34 @@ export function applyWriteTool(ctx: Context, sandbox: FsSandboxController): void
       const target = await ctx.fs.resolve(input.filePath, sessionResolveOptions(exec, sandboxPolicy?.workspaceRoot))
       // Single-slot decision: the policy plugin produces createIfAbsent/
       // replaceIfVersion; the bare default is undefined (unconditional). No stat.
-      const intent = await ctx.waterfall('fs/write-intent', target, exec, () => undefined)
+      let intent = await ctx.waterfall('fs/write-intent', target, exec, () => undefined)
       let outcome: FsWriteOutcome
       try {
         outcome = await ctx.fs.writeText(target, input.content, intent, exec.signal, sandboxPolicy)
       } catch (error: unknown) {
-        // A sandbox denial becomes the shared [sandbox: …] marker (the model
-        // recognizes it from bash); guarded mutation failures receive their
-        // stable model-facing diagnostic; anything else passes through.
-        throw remediateFsError(sandbox.mapError(error, sandboxPolicy), target.displayPath)
+        // Auto-read recovery: when the policy rejects with FS_NOT_OBSERVED (file exists
+        // but was not read), read the file to record the observation, then retry the
+        // write once with the correct version guard. This saves a model round-trip.
+        if (error instanceof FsError && error.code === 'FS_NOT_OBSERVED') {
+          const info = await ctx.fs.stat(target, exec.signal)
+          if (info !== undefined) {
+            ctx.emit('fs/observed', target, { kind: 'present', version: info.version }, exec)
+            intent = await ctx.waterfall('fs/write-intent', target, exec, () => undefined)
+            try {
+              outcome = await ctx.fs.writeText(target, input.content, intent, exec.signal, sandboxPolicy)
+            } catch (retryError: unknown) {
+              throw remediateFsError(sandbox.mapError(retryError, sandboxPolicy), target.displayPath)
+            }
+          } else {
+            // File does not exist; preserve the original NOT_OBSERVED diagnostic.
+            throw remediateFsError(sandbox.mapError(error, sandboxPolicy), target.displayPath)
+          }
+        } else {
+          // A sandbox denial becomes the shared [sandbox: …] marker (the model
+          // recognizes it from bash); guarded mutation failures receive their
+          // stable model-facing diagnostic; anything else passes through.
+          throw remediateFsError(sandbox.mapError(error, sandboxPolicy), target.displayPath)
+        }
       }
       ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, exec)
       return {

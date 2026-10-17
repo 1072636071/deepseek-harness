@@ -139,6 +139,12 @@
   color: var(--dsw-alias-state-business-primary);
 }
 
+/* The Workspace status dot sits in its own 16px cell after the folder and
+   chevron, which share one hover-swapped cell. */
+.projectRow .statusSlot {
+  margin-right: 4px;
+}
+
 
 /* Project leading slot: folder by default, expand arrow on row hover. */
 .projectRow .chevron { display: none; }

@@ -11,7 +11,7 @@ Desktop product events use the optional [product analytics service](../product-a
 
 ## Summary
 
-This package lets users browse grouped or flat Session lists, choose a Workspace for a new Session, and manage Workspaces and Sessions through add, rename, reorder, search, fork, archive, and Workspace deletion; the Session row menu and its hover buttons are slot lists that client plugins extend. Pending interactions appear as warning dots, and subagent-origin Sessions remain hidden. An idle, unarchived Session row with active scheduled tasks shows a clock mark, and its hover card lists those tasks. Canonically distinct folder paths remain separate Workspaces. Adding a Workspace requires a composed directory picker; without one, adding is unavailable.
+This package lets users browse grouped or flat Session lists, choose a Workspace for a new Session, and manage both through add, rename, reorder, search, fork, archive, and deletion; the Session row menu and hover buttons are plugin-extensible slot lists. Pending interactions appear as warning dots and subagent Sessions stay hidden. Each Workspace row shows one aggregate status dot over its unarchived Sessions: attention, running, unread completion, presence, or inactivity. An idle Session with scheduled tasks shows a clock mark, and the hover card lists them. Canonically distinct paths stay separate Workspaces; adding one needs a composed directory picker.
 
 ## Table of Contents
 
@@ -66,6 +66,22 @@ Session rows render the runtime's live `pendingInteraction` classification: appr
 ### Active Schedule markers
 
 Grouped and flat Session rows show a clock mark when the Session has active scheduled tasks. It is an occupant of the row's `sidebar.session.row.leading` seat, so it renders only on a row whose primary status is idle and never beside the row's own status dot; an archived row keeps that cell blank, and a search result has no leading seat and shows no mark. It is not a button, has no tab stop, and a press on its area does not open the row. The mark's own read and the meaning of its active-task condition belong to [ui-schedule](../ui-schedule/README.md).
+
+### Workspace row status
+
+Every Workspace row carries one aggregate status dot over its own unarchived Sessions, and its hover card repeats that status as a named line. The dot is `aria-hidden`, so the row's status cell carries the accessible name and the row's own text stays the Workspace title.
+
+| Status | Dot | Meaning |
+|---|---|---|
+| Needs attention | Red error | A Session's latest turn ended in `error` or `blocked` |
+| Running | Ongoing loader | A Session is running |
+| Unread | Green done | A Session finished unviewed outside the main view |
+| Present | Blue info | The Workspace has Sessions and none of the above |
+| Inactive | Grey idle | The Workspace has no unarchived Session |
+
+Precedence is fixed and independent of the order the Sessions appear in: attention, then running, then unread, then presence. Attention is per Session and reflects only that Session's latest turn, so a later turn that succeeds clears it. Archived Sessions and the provisional blank New Session placeholder never contribute.
+
+The fold reads a Workspace's complete unarchived ownership rather than its rendered rows, so a collapsed group reports the same status as an expanded one, and the archived-only filter and search do not change it. The attention state is the one input this package does not already hold: it comes from the durable `sessionTurnOutcome` projection that [`api/session-controller`](../../api/session-controller/README.md) folds from `turn/end`. That key is absent in an assembly that does not serve it, in which case the row reports the remaining states and simply never shows attention.
 
 -----
 
@@ -212,7 +228,7 @@ These limits define the search depth, the archive surface, and the picking carri
 
 - **No fuzzy content search or event deep links** — the content backend uses literal token/phrase matching, and selecting a result opens the Session rather than the matching event.
 - **No Session deletion** — sessions can be archived but never deleted; archived rows stay recoverable in place through the archived view filter and the search results' unarchive action, and Workspace registration deletion does not delete Sessions.
-- **Pending user interaction is not aggregated into collapsed groups** — a waiting row inside a collapsed group lights no group-header indicator and becomes visible only after that group is expanded.
+- **Pending user interaction is not aggregated into a Workspace row** — the Workspace status dot above covers attention, running, unread, presence, and inactivity only; a Session waiting for approval, a plan review, or an answer inside a collapsed group lights no Workspace-row indicator and becomes visible only after that group is expanded.
 - **Native folder selection depends on the local Host carrier** — under the `-native` composition, in-process or remote browser deployments cannot open a local operating-system dialog; remote-capable picking is the `-browse` composition's in-app flow.
 
 <a id="dev-note"></a>

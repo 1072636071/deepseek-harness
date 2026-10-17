@@ -13,8 +13,8 @@ import { reconcileManualOrder, type ArchivedFilter, type SessionRowState } from 
 /** Browser-local order account for the hierarchy-free flat Session list. */
 export const FLAT_SESSION_ORDER_KEY = '__flat_session_order__'
 
-/** Session-list grouping mode: sibling Workspace sections, a Workspace tree, or one flat list. */
-export type SessionGroupBy = 'workspace' | 'workspace-tree' | 'flat'
+/** Session-list grouping mode: sibling Workspace sections, a Workspace tree, user folders, or one flat list. */
+export type SessionGroupBy = 'workspace' | 'workspace-tree' | 'folder' | 'flat'
 /** Session order: saved manual positions or current recency. */
 export type SessionOrderBy = 'manual' | 'updated'
 

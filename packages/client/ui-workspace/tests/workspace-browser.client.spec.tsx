@@ -7,6 +7,7 @@ import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-sess
 import type {
   WorkspaceId, WorkspaceSnapshot, WorkspaceView,
 } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { WorkspaceFoldersSnapshot } from '@deepseek-ai/dsh-api-workspace-folders/client'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -79,6 +80,8 @@ const workspaceState = (
   error: null,
 })
 const noPendingInteraction: SessionStatusSnapshot = new Map()
+/** Folder projection served to specs that do not exercise folder grouping. */
+const EMPTY_FOLDERS: WorkspaceFoldersSnapshot = { folders: [], state: 'idle', error: null }
 function hook<T>(snapshot: T) {
   return function select<S>(selector: (state: T) => S): S { return selector(snapshot) }
 }
@@ -136,6 +139,13 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     createWorkspace: vi.fn(async () => workspace('created', [])),
     useDirectoryFlow: bindSnapshotSelector({ getSnapshot: () => true, subscribe: () => () => {} }),
     useHostInfo: selector => selector({ home: undefined, isLoopback: true }),
+    useFolders: hook(EMPTY_FOLDERS),
+    folderSupport: true,
+    createFolder: vi.fn(async () => undefined),
+    renameFolder: vi.fn(async () => undefined),
+    deleteFolder: vi.fn(async () => undefined),
+    setFolderExpanded: vi.fn(async () => undefined),
+    setFolderMembership: vi.fn(async () => undefined),
     renderSlot: renderDirectoryFlowOnly,
     t,
     ...overrides,
@@ -461,7 +471,7 @@ describe('WorkspaceBrowser', () => {
     expect(screen.getByText('分组方式')).toBeTruthy() // the menu heading label
     expect(screen.getAllByRole('separator')).toHaveLength(2)
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([
-      '按工作区', '按工作区树', '单列表', '手动排序', '最近更新', '隐藏已归档', '全部对话（显示已归档）', '仅显示已归档',
+      '按工作区', '按工作区树', '按文件夹', '单列表', '手动排序', '最近更新', '隐藏已归档', '全部对话（显示已归档）', '仅显示已归档',
     ])
     expect(screen.getByRole('menuitem', { name: '按工作区' }).querySelector('svg')).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: '手动排序' }).querySelector('svg')).toBeTruthy()

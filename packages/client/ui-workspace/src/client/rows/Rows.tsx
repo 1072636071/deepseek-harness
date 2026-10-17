@@ -15,16 +15,18 @@ import type { RefObject } from 'react'
 import clsx from 'clsx'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  HoverCard, IconArchiveOutlineRegular, IconEditOutlineRegular,
+  HoverCard, IconArchiveOutlineRegular, IconCheckOutlineRegular, IconEditOutlineRegular,
   IconEllipsisOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular,
   IconNewChatOutlineRegular, IconPinFillRegular, IconTrashOutlineRegular,
-  IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, Menu, relativeTime, StateDot, Tooltip,
+  IconTriangleRightFillRegular, IconUnarchiveOutlineRegular, Menu, type MenuEntry, type MenuItem, relativeTime, StateDot, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
 import type { MenuOpenState, WorkspaceBrowserProps } from '../contract/slots.ts'
-import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
+import type {
+  GroupNode, FolderHeaderNode, SearchResultNode, SessionNode, WorkspaceRowStatus,
+} from '../tree.ts'
 import css from './Rows.module.css'
 
 /** The standard locale seat, prop-passed from the browser root. */
@@ -157,17 +159,64 @@ function createdLabel(createdAt: number, t: RowTranslate): string {
   return t('hover.created', { time: `${date} ${pad2(d.getHours())}:${pad2(d.getMinutes())}` })
 }
 
-/** Hover-card body: workspace title, display directory path, absolute creation time. */
-function WorkspaceHoverContent({ label, cwd, createdAt, t }: {
+/**
+ * Workspace row status presentation, most urgent first. The dot is
+ * `aria-hidden`, so the label travels with it as the accessible text.
+ */
+function workspaceStatus(status: WorkspaceRowStatus, t: RowTranslate): SessionStatus {
+  switch (status) {
+    case 'attention':
+      return { state: 'error', label: t('status.workspace.attention') }
+    case 'running':
+      return { state: 'ongoing', label: t('status.workspace.running') }
+    case 'unread':
+      return { state: 'done', label: t('status.workspace.unread') }
+    case 'present':
+      return { state: 'info', label: t('status.workspace.present') }
+    case 'inactive':
+      return { state: 'idle', label: t('status.workspace.inactive') }
+    /* v8 ignore next -- closed WorkspaceRowStatus union */
+    default: return assertNever(status)
+  }
+}
+
+/** The Workspace status as the row's leading dot, named for screen readers. */
+function WorkspaceStatusDot({ status, t }: { status: WorkspaceRowStatus; t: RowTranslate }) {
+  const { state, label } = workspaceStatus(status, t)
+  // The name rides the wrapper, not a hidden text node: the row's text content
+  // is what its label already reads as, and a text node would append the
+  // status to it.
+  return (
+    <span role="img" aria-label={label} title={label}>
+      <StateDot state={state} />
+    </span>
+  )
+}
+
+/** The Workspace status as a hover-card line: dot plus visible label. */
+function WorkspaceStatusLine({ status, t }: { status: WorkspaceRowStatus; t: RowTranslate }) {
+  const { state, label } = workspaceStatus(status, t)
+  return (
+    <div className={css.hoverStatus}>
+      <StateDot state={state} />
+      <span>{label}</span>
+    </div>
+  )
+}
+
+/** Hover-card body: workspace title, display directory path, status, absolute creation time. */
+function WorkspaceHoverContent({ label, cwd, createdAt, status, t }: {
   label: string
   cwd: string | undefined
   createdAt: number
+  status: WorkspaceRowStatus
   t: RowTranslate
 }) {
   return (
     <div className={css.hoverContent}>
       <div className={css.hoverTitle}>{label}</div>
       <div className={css.hoverPath}>{cwd}</div>
+      <WorkspaceStatusLine status={status} t={t} />
       <div className={css.hoverTime}>{createdLabel(createdAt, t)}</div>
     </div>
   )
@@ -202,6 +251,23 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
   return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
 }
 
+/** Real-Workspace row actions; the move entry appears only in folder grouping. */
+export interface WorkspaceRowActions {
+  rename: () => void
+  delete: () => void
+  /**
+   * Folder membership move, present only while folder grouping is active. The
+   * row menu renders one submenu row per folder plus the detach row; `onSelect`
+   * receives the destination folder, or undefined to leave every folder.
+   */
+  move?: {
+    folders: readonly { folderId: string; title: string }[]
+    /** Folder currently holding this Workspace, when any. */
+    current: string | undefined
+    onSelect: (folderId: string | undefined) => void
+  } | undefined
+}
+
 /**
  * Project (workspace) header row: folder + title;
  * hover reveals the chevron and create button, and dwelling on a real
@@ -211,6 +277,7 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
  * @param props.onToggle - expand/collapse the group.
  * @param props.onCreate - start a frontend Session inside this Workspace.
+ * @param props.actions - real-Workspace row actions (absent for the ungrouped bucket).
  * @param props.drag - optional workspace-row drag wiring.
  * @param props.home - host account home for POSIX hover-path abbreviation.
  * @param props.t - the browser root's locale seat.
@@ -223,7 +290,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   onToggle: () => void
   onCreate: () => void
   /** Real-Workspace actions; absent for the ungrouped bucket (no menu shown). */
-  actions?: { rename: () => void; delete: () => void } | undefined
+  actions?: WorkspaceRowActions | undefined
   /** Present only for real Workspace rows in the grouped view. */
   drag?: WorkspaceRowDragProps | undefined
   /** Host account home; POSIX home-rooted hover paths display as `~`. */
@@ -235,8 +302,24 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   const label = row.workspaceId === undefined ? t('group.ungrouped') : row.label
   const active = containsCurrentDescendant || (group.expanded && group.containsCurrent)
   const [menuOpen, setMenuOpen] = useState(false)
-  const workspaceMenuItems = [
+  const move = actions?.move
+  const workspaceMenuItems: MenuEntry[] = [
     { id: 'rename', label: t('rename'), icon: <IconEditOutlineRegular /> },
+    ...(move === undefined ? [] : [{
+      id: 'move',
+      label: t('folder.moveTo'),
+      icon: <IconFolderCloseRegular />,
+      // Submenus hold plain items only, so the detach row always follows the
+      // folder rows rather than sitting behind a separator.
+      submenu: [
+        ...move.folders.map((folder): MenuItem => ({
+          id: `move:${folder.folderId}`,
+          label: folder.title,
+          icon: folder.folderId === move.current ? <IconCheckOutlineRegular /> : undefined,
+        })),
+        { id: 'move:none', label: t('folder.moveOut'), icon: <IconFolderOpenRegular /> },
+      ],
+    } satisfies MenuEntry]),
     { id: 'delete', label: t('delete.workspace'), icon: <IconTrashOutlineRegular />, danger: true },
   ]
   const ownRow = (
@@ -262,6 +345,9 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
       <span className={clsx(css.slot, css.chevron)}>
         <IconTriangleRightFillRegular className={clsx(css.arrow, row.expanded && css.arrowOpen)} />
       </span>
+      <span className={clsx(css.slot, css.statusSlot)}>
+        <WorkspaceStatusDot status={row.status} t={t} />
+      </span>
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
       </span>
@@ -275,10 +361,11 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
               setMenuOpen(false)
               // Unknown ids leave before the dispatch: a future menu row must
               // not inherit the destructive branch as an else fallback.
-              /* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
-              if (id !== 'rename' && id !== 'delete') return
+              /* v8 ignore next -- Menu can emit only the rows supplied above. */
+              if (id !== 'rename' && id !== 'delete' && !id.startsWith('move:')) return
               if (id === 'rename') actions.rename()
-              else actions.delete()
+              else if (id === 'delete') actions.delete()
+              else actions.move?.onSelect(id === 'move:none' ? undefined : id.slice('move:'.length))
             }}
             portal
             closeOnPointerLeave
@@ -317,6 +404,7 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
         label={row.label}
         cwd={row.cwd === undefined ? undefined : abbreviateHomePath(row.cwd, home)}
         createdAt={row.createdAt}
+        status={row.status}
         t={t}
       />}
       openDelayMs={800}
@@ -328,9 +416,91 @@ export function ProjectRowItem({ group, containsCurrentDescendant = false, onTog
   )
 }
 
-/* v8 ignore next 3 -- closed-union backstop; only reached if the status is forged */
+/* v8 ignore next 3 -- closed-union backstop; only reached if a discriminant is forged */
 function assertNever(value: never): never {
-  throw new Error(`unknown pending interaction: ${String(value)}`)
+  throw new Error(`unknown variant: ${String(value)}`)
+}
+
+/**
+ * One user-defined folder row: a disclosure header over the Workspaces it
+ * holds. Its menu offers rename and delete; moving Workspaces in and out is a
+ * Workspace-row action, because a folder header holds no Workspace identity.
+ * @param props.folder - folder header facts.
+ * @param props.containsCurrentDescendant - highlight the folder when a nested Workspace holds the selection.
+ * @param props.onToggle - expand/collapse the folder.
+ * @param props.actions - rename and delete callbacks.
+ * @param props.drag - optional folder-row drag wiring (folders reorder as a list).
+ * @param props.t - the browser root's locale seat.
+ * @returns the folder row.
+ */
+export function FolderRowItem({ folder, containsCurrentDescendant = false, onToggle, actions, drag, t }: {
+  folder: FolderHeaderNode
+  containsCurrentDescendant?: boolean
+  onToggle: () => void
+  actions: { rename: () => void; delete: () => void }
+  drag?: WorkspaceRowDragProps | undefined
+  t: RowTranslate
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const active = containsCurrentDescendant
+  return (
+    <div
+      className={clsx(css.projectRow, menuOpen && css.menuOpen)}
+      data-row-key={`folder:${folder.folderId}`}
+      role="treeitem"
+      aria-expanded={folder.expanded}
+      aria-label={folder.title}
+      onClick={onToggle}
+      draggable={drag !== undefined}
+      onDragStart={drag === undefined
+        ? undefined
+        : (e) => {
+          e.dataTransfer.effectAllowed = 'move'
+          e.dataTransfer.setData('text/plain', folder.folderId)
+          drag.start()
+        }}
+      onDragEnd={drag?.end}
+    >
+      <span className={clsx(css.slot, css.folder, active && css.folderActive)}>
+        {folder.expanded ? <IconFolderOpenRegular /> : <IconFolderCloseRegular />}
+      </span>
+      <span className={clsx(css.slot, css.chevron)}>
+        <IconTriangleRightFillRegular className={clsx(css.arrow, folder.expanded && css.arrowOpen)} />
+      </span>
+      <span className={css.projectText}>
+        <span className={css.title}>{folder.title}</span>
+      </span>
+      <span className={css.rowActions}>
+        <Menu
+          open={menuOpen}
+          onClose={() => { setMenuOpen(false) }}
+          items={[
+            { id: 'rename', label: t('folder.rename'), icon: <IconEditOutlineRegular /> },
+            { id: 'delete', label: t('folder.delete'), icon: <IconTrashOutlineRegular />, danger: true },
+          ]}
+          onSelect={(id) => {
+            setMenuOpen(false)
+            /* v8 ignore next -- Menu can emit only the rename and delete rows supplied above. */
+            if (id !== 'rename' && id !== 'delete') return
+            if (id === 'rename') actions.rename()
+            else actions.delete()
+          }}
+          portal
+          closeOnPointerLeave
+          anchor={(
+            <button
+              type="button"
+              className={css.iconButton}
+              aria-label={t('folder.actions.aria', { name: folder.title })}
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(v => !v) }}
+            >
+              <IconEllipsisOutlineRegular />
+            </button>
+          )}
+        />
+      </span>
+    </div>
+  )
 }
 
 interface SessionStatus {

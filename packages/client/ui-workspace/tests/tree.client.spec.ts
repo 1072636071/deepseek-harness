@@ -7,9 +7,10 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
-  type ArchivedFilter,
-  deriveFlat, deriveGroups, deriveSearchResults, orderByRecency, owningGroupKey, owningParentFolder,
-  pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds, workspaceLabel, UNGROUPED_KEY,
+  type ArchivedFilter, type GroupNode, type WorkspaceRowStatus,
+  deriveFlat, deriveGroups, deriveSearchResults, layoutFolderSections, orderByRecency, owningGroupKey,
+  owningParentFolder, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds,
+  workspaceLabel, UNGROUPED_KEY,
 } from '../src/client/tree.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 
@@ -519,6 +520,110 @@ describe('deriveGroups', () => {
     )
     expect(looseGroups.find(group => group.key === UNGROUPED_KEY)!.containsCurrent).toBe(true)
   })
+
+  describe('workspace row status', () => {
+    /** Attach the durable last-turn outcome the Host list projection carries. */
+    const withTurnEnd = (session: SessionSummary, lastTurnEnd: string | null): SessionSummary => ({
+      ...session,
+      projectionValues: { sessionTurnOutcome: { lastTurnEnd } },
+    })
+
+    const statusOf = (
+      members: SessionSummary[],
+      statuses: SessionStatusSnapshot = noAttention,
+      expansion: readonly string[] = ['project'],
+    ): WorkspaceRowStatus => deriveGroups(
+      list(...members), [workspace('project', members.map(m => m.id))], noRows, statuses, view(expansion),
+    )[0]!.status
+
+    it('reports inactive for a Workspace with no session, and for one holding only archives', () => {
+      expect(deriveGroups(list(), [workspace('project', [])], noRows, noAttention, view())[0]!.status)
+        .toBe('inactive')
+      const archivedOnly = deriveGroups(
+        list(summary('stored', 1)), [workspace('project', ['stored'])],
+        rowState({ archived: ['stored'] }), noAttention, view(['project']),
+      )[0]!
+      expect(archivedOnly.status).toBe('inactive')
+    })
+
+    it('reports present for a Workspace with a session and no marked state', () => {
+      expect(statusOf([summary('plain', 1)])).toBe('present')
+    })
+
+    it('reports unread when a session finished unviewed outside the main view', () => {
+      const finished = summary('finished', 1)
+      const statuses: SessionStatusSnapshot = new Map([[finished.id, status(undefined, { completionUnread: true })]])
+      expect(statusOf([finished], statuses)).toBe('unread')
+    })
+
+    it('reports running for a live session and for a running subagent-only session', () => {
+      const live = summary('live', 1)
+      expect(statusOf([live], new Map([[live.id, status(undefined, { running: true })]]))).toBe('running')
+      // The list row carries running state before any status snapshot exists.
+      expect(statusOf([{ ...summary('host', 1), running: true }])).toBe('running')
+    })
+
+    it.each(['error', 'blocked'] as const)('reports attention for a last turn that ended %s', (lastTurnEnd) => {
+      expect(statusOf([withTurnEnd(summary('failed', 1), lastTurnEnd)])).toBe('attention')
+    })
+
+    it.each(['completed', 'aborted', 'max-tokens', 'interrupted', 'forked', null] as const)(
+      'does not report attention for a last turn that ended %s',
+      (lastTurnEnd) => {
+        expect(statusOf([withTurnEnd(summary('fine', 1), lastTurnEnd)])).toBe('present')
+      },
+    )
+
+    it('does not report attention for an outcome a later build merged in', () => {
+      expect(statusOf([withTurnEnd(summary('merged', 1), 'rate-limited')])).toBe('present')
+    })
+
+    it('self-heals: a later successful turn clears an earlier attention state', () => {
+      const session = summary('recovered', 1)
+      expect(statusOf([withTurnEnd(session, 'error')])).toBe('attention')
+      expect(statusOf([withTurnEnd(session, 'completed')])).toBe('present')
+    })
+
+    it('applies the fixed priority 红 > 黄 > 绿 > 蓝 across members', () => {
+      const failed = withTurnEnd(summary('failed', 4), 'error')
+      const live = summary('live', 3)
+      const finished = summary('finished', 2)
+      const plain = summary('plain', 1)
+      const liveStatuses: SessionStatusSnapshot = new Map([[live.id, status(undefined, { running: true })]])
+      const unreadStatuses: SessionStatusSnapshot = new Map([
+        [finished.id, status(undefined, { completionUnread: true })],
+      ])
+      const all: SessionStatusSnapshot = new Map([...liveStatuses, ...unreadStatuses])
+      const members = [plain, finished, live, failed]
+      // Attention outranks everything, then running, then unread, then presence.
+      expect(statusOf(members, all)).toBe('attention')
+      expect(statusOf(members.slice(0, 3), all)).toBe('running')
+      expect(statusOf(members.slice(0, 2), all)).toBe('unread')
+      expect(statusOf(members.slice(0, 1), all)).toBe('present')
+    })
+
+    it('folds ownership, so a collapsed group reports the same status as an expanded one', () => {
+      const live = summary('live', 1)
+      const statuses: SessionStatusSnapshot = new Map([[live.id, status(undefined, { running: true })]])
+      expect(statusOf([live], statuses, ['project'])).toBe('running')
+      expect(statusOf([live], statuses, [])).toBe('running')
+    })
+
+    it('ignores archived members and the provisional blank placeholder', () => {
+      const live = summary('live', 2)
+      const currentBlank = { ...summary('blank', 3), blank: true, retainedBy: { mainView: 1 } }
+      const statuses: SessionStatusSnapshot = new Map([[live.id, status(undefined, { running: true })]])
+      const groups = deriveGroups(
+        list(currentBlank, live),
+        [workspace('project', ['blank', 'live'])],
+        rowState({ archived: ['live'] }),
+        statuses,
+        view(['project']),
+      )
+      // The only unarchived member is the blank placeholder: nothing to report.
+      expect(groups[0]!.status).toBe('inactive')
+    })
+  })
 })
 
 describe('deriveFlat', () => {
@@ -875,6 +980,35 @@ describe('parent folder membership', () => {
     ['/Git/app', ['/git'], undefined],
   ])('groups %s under its nearest registered ancestor', (path, parents, expected) => {
     expect(owningParentFolder(path, parents)).toBe(expected)
+  })
+})
+
+describe('layoutFolderSections', () => {
+  const group = (key: string, workspaceId: string | undefined): GroupNode => ({
+    key, workspaceId: workspaceId === undefined ? undefined : wid(workspaceId),
+    cwd: undefined, createdAt: undefined, label: key,
+    sessionCount: 0, status: 'present', expanded: false, containsCurrent: false, sessions: [],
+  })
+
+  it('returns folder members in folder order and the unclaimed remainder loose', () => {
+    const loose = group('loose', 'loose')
+    const claimed = group('claimed', 'claimed')
+    const second = group('second', 'second')
+    // The ungrouped bucket shares the loose remainder and must survive the split.
+    const ungrouped = group(UNGROUPED_KEY, undefined)
+    const folders = [
+      { folderId: 'f1', title: 'First', workspaceIds: [wid('claimed')], expanded: true },
+      { folderId: 'f2', title: 'Second', workspaceIds: [wid('second')], expanded: false },
+    ]
+    const { sections, loose: remainder } = layoutFolderSections([loose, claimed, second, ungrouped], folders)
+    expect(sections.map(section => [section.folder.folderId, section.groups.map(g => g.key)]))
+      .toEqual([['f1', ['claimed']], ['f2', ['second']]])
+    expect(remainder.map(g => g.key)).toEqual(['loose', UNGROUPED_KEY])
+  })
+
+  it('ignores a folder member id no group claims', () => {
+    const folders = [{ folderId: 'f1', title: 'First', workspaceIds: [wid('absent')], expanded: true }]
+    expect(layoutFolderSections([group('other', 'other')], folders).sections[0]!.groups).toEqual([])
   })
 })
 

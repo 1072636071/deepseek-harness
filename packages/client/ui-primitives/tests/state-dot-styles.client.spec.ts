@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(fileURLToPath(new URL('../src/StateDot.module.css', import.meta.url)), 'utf8')
 
 describe('StateDot.module.css', () => {
-  it.each(['done', 'warning', 'error', 'idle'] as const)('gives the %s state its own color rule', (state) => {
+  it.each(['done', 'warning', 'error', 'idle', 'info'] as const)('gives the %s state its own color rule', (state) => {
     expect(css).toContain(`.dot[data-state='${state}']`)
   })
 
@@ -27,6 +27,11 @@ describe('StateDot.module.css', () => {
 
   it('uses the neutral state token for idle', () => {
     expect(css).toMatch(/\.dot\[data-state='idle'\][^{]*\{[^}]*--dsw-alias-state-idle-primary/su)
+  })
+
+  it('uses its own informational token for info, distinct from idle', () => {
+    expect(css).toMatch(/\.dot\[data-state='info'\][^{]*\{[^}]*--dsw-alias-state-info-primary/su)
+    expect(css).not.toMatch(/\.dot\[data-state='info'\][^{]*\{[^}]*--dsw-alias-state-idle-primary/su)
   })
 
   it('keeps ongoing on the rotating spinner rather than a solid-dot rule', () => {

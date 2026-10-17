@@ -343,6 +343,23 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-files -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-folders -->
+<a id="deepseek-aidsh-api-workspace-folders"></a>
+
+## `@deepseek-ai/dsh-api-workspace-folders`
+
+- `inject`: `storageDomain` · `workspaceRegistry`
+- `source`: [`packages/api/workspace-folders/src/index.ts:43`](../packages/api/workspace-folders/src/index.ts)
+
+```ts config-catalog
+/** Plugin config. */
+export interface Config {
+  /** Longest accepted folder title; defaults to {@link MAX_FOLDER_TITLE_LENGTH}. */
+  maxTitleLength?: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-folders -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-attachment-local -->
 <a id="deepseek-aidsh-attachment-local"></a>
 
@@ -3798,7 +3815,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-tool-str-replace-editor`
 
 - `inject`: `tools` · `fs`
-- `source`: [`packages/fs/tool-str-replace-editor/src/index.ts:506`](../packages/fs/tool-str-replace-editor/src/index.ts)
+- `source`: [`packages/fs/tool-str-replace-editor/src/index.ts:534`](../packages/fs/tool-str-replace-editor/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for the string-replacement editor tool. */

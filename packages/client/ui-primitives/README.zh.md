@@ -51,7 +51,7 @@ kind: "package-library"
 | `SegmentedTabs` | 受控的等宽分段标签，支持滑动指示条及左／右方向键、Home、End 导航。调用方提供文案、标签与面板 id，以及面板内容。 |
 | `Tag` | 只读胶囊徽章；`tone` 选择八种配色之一。 |
 | `PathLabel` | 单行文件路径：目录使用弱化颜色，文件名使用主色，悬停可查看完整路径。空间足够时靠左显示；溢出时保留尾部并在左侧渐隐，路径或尺寸变化时更新。 |
-| `StateDot` | 10px 槽内的绿色 `done`、琥珀色 `warning`、红色 `error`、中性灰色 `idle` 圆点，以及 tertiary 灰色 14px 旋转 `ongoing` loading，其动画固定到文档时间零点，所以所有可见 loading 同相旋转。它是 `aria-hidden` 的，名称由渲染点提供。 `appearance="step"` 以实心勾表示完成、空心圆表示等待。 |
+| `StateDot` | 10px 槽内的绿色 `done`、琥珀色 `warning`、红色 `error`、蓝色 `info`、中性灰色 `idle` 圆点，以及 tertiary 灰色 14px 旋转 `ongoing` loading，其动画固定到文档时间零点，所以所有可见 loading 同相旋转。它是 `aria-hidden` 的，名称由渲染点提供。 `appearance="step"` 以实心勾表示完成、空心圆表示等待。 |
 | `ConnectionIndicator` | 行内连接恢复控件，覆盖断线、重试与已恢复三种状态。 |
 | `DisclosureRow` | 24px 紧凑折叠行，标题与内容左右排列。标题行默认使用 tertiary，悬停时使用 secondary；文字与图标继承该颜色，不受能否展开及开合状态影响，调用方可提供功能专属覆盖。语义状态色保持显式指定。收起时悬停预览向下箭头，展开后持续显示向上箭头。使用浅层 prop 比较进行 memo；内容未变时，保持回调与 React 节点 prop 的引用稳定。 |
 | `TextShimmer` | 同一道高光从左到右扫过一行的标题、分隔符、摘要与后缀：首次等待 300ms，扫动一秒，再静止 500ms。遮罩覆盖内容宽度，并限制在可见行宽内，相对垂直方向倾斜 15°，峰值区域平坦，两侧柔和渐隐。移动的装饰层始终裁剪在行内，不会扩大可滚动区域。底色继承调用方的颜色，包括悬停变化；主题提供半透明高光。图标和箭头放在 `TextShimmer` 外，只有文字和分隔符参与扫光。字符串子节点沿用稳定的文字接口；嵌套的 `TextShimmer` 共用外层动画。活动期间组合子节点渲染两次，因此不得带副作用或元素 id。分隔符标记 `data-shimmer-decoration`，让填色参与扫光。`DisclosureRow` 将 `contentClassName` 传给文字区域，将 `contentLayoutClassName` 传给内部布局。惰性装饰副本不参与交互、选区和无障碍访问；文字更新保留动画，减少动态效果模式保留静态底色。 |
@@ -198,7 +198,7 @@ kind: "package-library"
 - **长高亮 fence 会保留完整 token DOM**：流式路径避免重新解析、重新 tokenize 和 reconcile 已完成前缀，但不会丢弃旧颜色或虚拟化 token span。因此最终 DOM 数量仍随 fence 的 token 数增长；嵌套／容器内 fence 与病态的单个超长行仍走通用尾部路径。
 - **鱼形标志是重新绘制的近似版本**：它来自字体字形，而本地设计数据无法导出其矢量几何；在获得精确导出路径前，使用手工重建版本代替。
 - **`Pill` 与 `Input` 没有设计来源**：两个原子组件均自行定义；与其相似的侧边栏搜索字段和视图标签条由消费方组合，不是这些原子组件。
-- **`StateDot` 没有 `Active` 变体**：支持的状态为 done、warning、ongoing、error 和 idle。
+- **`StateDot` 没有 `Active` 变体**：支持的状态为 done、warning、ongoing、error、idle 和 info。
 - **面向用户的文案必须由渲染点提供**：这些原子组件是 zero-Cordis 的，拿不到 `ctx.locale`；各功能必须通过原子组件的带类型 prop 提供完整本地化 label（见[决策](../../../.agents/notes/implemented/architecture/2026-08-23-locale-owned-client-ui-copy.zh.md)）。
 - **`TerminalBlock` 不是终端模拟器**：它渲染已结束或仍在运行的命令输出，而不是交互式会话：SGR 颜色、回车、退格、行内擦除、制表位与字符宽度会被遵循；绝对光标定位、清屏与备用屏幕序列会被剥离。
 

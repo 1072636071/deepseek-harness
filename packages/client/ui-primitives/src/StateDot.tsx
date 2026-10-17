@@ -4,9 +4,10 @@ import { IconCheckOutlineRegular } from './icons/index.tsx'
 
 /**
  * State semantic: green done / amber user-attention / tertiary-grey loading /
- * red error / neutral-grey idle for a tracked subject with nothing in progress.
+ * red error / neutral-grey idle for a tracked subject with nothing in progress /
+ * blue info for a subject that is present and carries no action item.
  */
-export type StateDotState = 'done' | 'warning' | 'ongoing' | 'error' | 'idle'
+export type StateDotState = 'done' | 'warning' | 'ongoing' | 'error' | 'idle' | 'info'
 
 /**
  * Pin the loader's CSS animations to document time zero. A CSS animation starts
@@ -24,7 +25,7 @@ function syncSpinner(element: SVGSVGElement | null): void {
 
 /**
  * Render a state dot.
- * @param props.state - which of `done`, `warning`, `ongoing`, `error`, or `idle` to show.
+ * @param props.state - which of `done`, `warning`, `ongoing`, `error`, `idle`, or `info` to show.
  * @param props.size - outer diameter in px; defaults to 14 for ongoing and 10 for solid states.
  * @param props.className - extra class for layout placement.
  * @param props.appearance - compact dot by default; step uses a filled check or hollow pending circle.

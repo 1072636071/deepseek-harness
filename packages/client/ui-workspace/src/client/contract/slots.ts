@@ -48,6 +48,8 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { SessionSearchResultItem } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { RemoteHostFacts } from '@deepseek-ai/dsh-api-remotes/client'
+import type { WorkspaceFoldersSnapshot } from '@deepseek-ai/dsh-api-workspace-folders/client'
+import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionActivity, WorkspaceId, WorkspaceView } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
@@ -223,7 +225,48 @@ export type WorkspaceBrowserInjected = {
     hostInfo: HostObservable<RemoteHostFacts>
     workspaceShortcuts: HostObservable<WorkspaceShortcutState>
     shortcuts: HostObservable<readonly ShortcutCatalogEntry[]>
+    /**
+     * User-defined folder projection. Always bound: a composition without the
+     * folder plugin reads an empty source and the surface offers no folder
+     * grouping, so the region behaves exactly as it did before.
+     */
+    folders: HostObservable<WorkspaceFoldersSnapshot>
   }
+  /** True while the composed folder capability can serve mutations. */
+  folderSupport: boolean
+  /**
+   * Create a folder.
+   * @param title - proposed folder title.
+   * @returns the Host failure, or undefined on success.
+   */
+  createFolder: (title: string) => Promise<RemoteFailure | undefined>
+  /**
+   * Rename a folder.
+   * @param folderId - target folder.
+   * @param title - proposed folder title.
+   * @returns the Host failure, or undefined on success.
+   */
+  renameFolder: (folderId: string, title: string) => Promise<RemoteFailure | undefined>
+  /**
+   * Remove a folder; its Workspaces return to the ungrouped list.
+   * @param folderId - target folder.
+   * @returns the Host failure, or undefined on success.
+   */
+  deleteFolder: (folderId: string) => Promise<RemoteFailure | undefined>
+  /**
+   * Persist one folder's expansion state.
+   * @param folderId - target folder.
+   * @param expanded - desired expansion.
+   * @returns the Host failure, or undefined on success.
+   */
+  setFolderExpanded: (folderId: string, expanded: boolean) => Promise<RemoteFailure | undefined>
+  /**
+   * Move a Workspace into a folder, or out of every folder when `folderId` is omitted.
+   * @param workspaceId - Workspace to move.
+   * @param folderId - destination folder.
+   * @returns the Host failure, or undefined on success.
+   */
+  setFolderMembership: (workspaceId: WorkspaceId, folderId?: string) => Promise<RemoteFailure | undefined>
   /** Open the browser search and focus its input. */
   requestSearch: () => void
   /** Request the existing directory picker. */

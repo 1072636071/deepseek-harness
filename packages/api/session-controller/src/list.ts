@@ -15,7 +15,7 @@ import {
 } from './types.ts'
 import type {
   SessionListMetadata, SessionProjectionHints, SessionProjectionValues, SessionSearchItem,
-  SessionSearchValue, SessionSummary,
+  SessionSearchValue, SessionSummary, SessionTurnOutcome,
 } from './types.ts'
 
 const SEARCH_PROVIDER_CALL_LIMIT = 100
@@ -25,6 +25,10 @@ const MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
 const sessionListMetadataSchema: z.ZodType<SessionListMetadata> = z.object({
   blank: z.boolean(),
   lastPromptAt: z.number().nullable(),
+})
+
+const sessionTurnOutcomeSchema: z.ZodType<SessionTurnOutcome> = z.object({
+  lastTurnEnd: z.string().nullable(),
 })
 
 const imageLimitsSchema = z.object({
@@ -56,6 +60,22 @@ export function applySessionListMetadata(
 }
 
 /**
+ * Fold the latest `turn/end` reason discriminant so a list can flag a Session
+ * whose last turn needs a human. Each later turn replaces the recorded
+ * outcome, so a failed turn is cleared by the next turn that succeeds.
+ * @param state - outcome before the event.
+ * @param event - next committed Session event.
+ * @returns the original state when the event is not a `turn/end`, else the replacement.
+ */
+export function applySessionTurnOutcome(
+  state: SessionTurnOutcome,
+  event: SessionEvent,
+): SessionTurnOutcome {
+  if (event.type !== 'turn/end') return state
+  return { lastTurnEnd: event.data.reason.kind }
+}
+
+/**
  * Return the longest prefix containing at most `maximum` Unicode code points.
  * @param value - source text.
  * @param maximum - maximum number of Unicode code points.
@@ -82,6 +102,14 @@ export class ApiSessionList {
       init: () => ({ blank: true, lastPromptAt: null }),
       apply: applySessionListMetadata,
       wire: { viewSchema: sessionListMetadataSchema, view: state => state },
+      stateVersion: 1,
+    })
+    ctx.sessionProjections.register<'sessionTurnOutcome', SessionTurnOutcome>({
+      key: 'sessionTurnOutcome',
+      stateSchema: sessionTurnOutcomeSchema,
+      init: () => ({ lastTurnEnd: null }),
+      apply: applySessionTurnOutcome,
+      wire: { viewSchema: sessionTurnOutcomeSchema, view: state => state },
       stateVersion: 1,
     })
     ctx.inject(['attachments'], (attachmentCtx) => {

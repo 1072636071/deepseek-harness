@@ -108,6 +108,11 @@
       "@deepseek-ai/dsh-api-workspace-controller/client": ["./packages/api/workspace-controller/src/client/index.ts"],
       "@deepseek-ai/dsh-api-workspace-controller/default-workspace": ["./packages/api/workspace-controller/src/default-workspace.ts"],
       "@deepseek-ai/dsh-api-workspace-controller/types": ["./packages/api/workspace-controller/src/types.ts"],
+      // api/ folders carry the group prefix in their npm names, so these stay
+      // hand-written like the workspace-controller aliases above.
+      "@deepseek-ai/dsh-api-workspace-folders": ["./packages/api/workspace-folders/src/index.ts"],
+      "@deepseek-ai/dsh-api-workspace-folders/client": ["./packages/api/workspace-folders/src/client/index.ts"],
+      "@deepseek-ai/dsh-api-workspace-folders/types": ["./packages/api/workspace-folders/src/types.ts"],
       "@deepseek-ai/dsh-typert-protocol": ["./packages/typert/protocol/src/index.ts"],
       "@deepseek-ai/dsh-typert-protocol/types": ["./packages/typert/protocol/src/types.ts"],
       "@deepseek-ai/dsh-typert-loader": ["./packages/typert/loader/src/index.ts"],

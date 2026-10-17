@@ -66,21 +66,48 @@ export type SessionOrderBy = 'manual' | 'updated'
 
 /** One workspace group section: header row facts + visible top-level session rows. */
 export interface GroupNode {
-  /** Group key: the workspace id or {@link UNGROUPED_KEY}. */
+  /** Group key: the workspace id, {@link UNGROUPED_KEY}, or a folder id. */
   key: string
-  /** Backing Workspace id; absent only for the ungrouped bucket. */
+  /** Backing Workspace id; absent for the ungrouped bucket and folder headers. */
   workspaceId: WorkspaceId | undefined
+  /**
+   * Folder membership for this node. A folder header carries its own id and no
+   * `workspaceId`; a Workspace nested under a folder carries both.
+   */
+  folder?: FolderHeaderNode | undefined
   cwd: string | undefined
   /** Workspace creation time (epoch ms); absent only for the ungrouped bucket. */
   createdAt: number | undefined
   label: string
   /** Total visible sessions in the group. */
   sessionCount: number
+  /** Aggregate status over the group's unarchived sessions; derived regardless of expansion. */
+  status: WorkspaceRowStatus
   expanded: boolean
   /** The group contains the selected session (active folder tint; supplied here so the renderer never scans). */
   containsCurrent: boolean
   /** Visible session rows (empty while the group is folded). */
   sessions: readonly SessionNode[]
+}
+
+/**
+ * Aggregate status of one Workspace row, listed from most to least urgent:
+ * `attention` needs a human, `running` is still working, `unread` finished with
+ * news the user has not opened, `present` merely holds Sessions, and `inactive`
+ * holds no unarchived Session. The renderer maps each to a dot state.
+ */
+export type WorkspaceRowStatus = 'attention' | 'running' | 'unread' | 'present' | 'inactive'
+
+/** One user-defined folder header: identity, title, and the Workspaces it holds. */
+export interface FolderHeaderNode {
+  /** Folder identity. */
+  folderId: string
+  /** Folder display title. */
+  title: string
+  /** Workspaces held by this folder, in the browser's Workspace order. */
+  workspaceIds: readonly WorkspaceId[]
+  /** Whether the folder's section is expanded. */
+  expanded: boolean
 }
 
 /** One flat search row combining list metadata with an optional content match. */
@@ -120,6 +147,8 @@ interface Group {
   createdAt: number | undefined
   label: string
   sessions: SessionSummary[]
+  /** Complete unarchived account membership; the row status folds here, not over the filtered view. */
+  owned: SessionSummary[]
 }
 
 /**
@@ -304,8 +333,9 @@ function buildGroup(
   createdAt: number | undefined,
   label: string,
   members: readonly SessionSummary[],
+  owned: readonly SessionSummary[],
 ): Group {
-  return { key, workspaceId, cwd, createdAt, label, sessions: [...members] }
+  return { key, workspaceId, cwd, createdAt, label, sessions: [...members], owned: [...owned] }
 }
 
 /** Apply a stored Ungrouped order and append newly loose Sessions by recency. */
@@ -343,10 +373,17 @@ function groupByWorkspace(
   const accounted = new Set<SessionId>()
   for (const workspace of workspaces) {
     const members: SessionSummary[] = []
+    const owned: SessionSummary[] = []
     for (const id of workspace.sessionIds) {
       const summary = list.byId[id]
       if (summary === undefined) continue // account may lead the list pull; the row appears when the summary lands
       accounted.add(id)
+      // The status fold reads ownership, so it collects before the visibility
+      // filter: an archived-only or search-narrowed view still reports the
+      // Workspace's real aggregate. Archived Sessions drop out — the archive is
+      // already the user's own dismissal — and so does the provisional blank
+      // placeholder, which is not yet a Session with anything to report.
+      if (!archived.has(id) && !summary.blank) owned.push(summary)
       if (!sessionVisible(summary, current, archived, archivedFilter)) continue
       members.push(summary)
     }
@@ -355,7 +392,7 @@ function groupByWorkspace(
     if (archivedFilter === 'only' && members.length === 0) continue
     groups.push(buildGroup(
       workspace.workspaceId, workspace.workspaceId, workspace.path,
-      Date.parse(workspace.createdAt), workspace.title, members,
+      Date.parse(workspace.createdAt), workspace.title, members, owned,
     ))
   }
   const stray = list.ids
@@ -370,6 +407,7 @@ function groupByWorkspace(
       undefined,
       '',
       orderedUngrouped(stray, ungroupedOrder, list.byId),
+      stray.filter(session => !archived.has(session.id) && !session.blank),
     ))
   }
   return groups
@@ -457,6 +495,7 @@ export function deriveGroups(
       createdAt: g.createdAt,
       label: g.label,
       sessionCount: g.sessions.length,
+      status: workspaceRowStatus(g.owned, statuses),
       expanded,
       containsCurrent: g.key === currentGroup,
       sessions: expanded
@@ -466,6 +505,43 @@ export function deriveGroups(
     })
   }
   return groups
+}
+
+/**
+ * Latest-turn outcomes that need a human. `TurnEndReasonMap` is merge-extensible,
+ * so any other discriminant — including a variant contributed by a plugin this
+ * build does not know — is not an attention state.
+ */
+const ATTENTION_TURN_ENDS: ReadonlySet<string> = new Set(['error', 'blocked'])
+
+/**
+ * Fold one Workspace's unarchived Sessions into its row status, most urgent
+ * first. Everything folds over the group's complete ownership, not its visible
+ * rows, so a collapsed group reports the same status as an expanded one and an
+ * archived-only or search-narrowed view cannot change it.
+ * @param owned - the group's unarchived Sessions the list currently knows.
+ * @param statuses - unified UI status by Session.
+ * @returns the aggregate row status.
+ */
+export function workspaceRowStatus(
+  owned: readonly SessionSummary[],
+  statuses: SessionStatuses,
+): WorkspaceRowStatus {
+  let present = false
+  let running = false
+  let unread = false
+  for (const member of owned) {
+    present = true
+    if (statuses.get(member.id)?.running ?? member.running) running = true
+    if (statuses.get(member.id)?.completionUnread === true) unread = true
+    const lastTurnEnd = member.projectionValues?.sessionTurnOutcome?.lastTurnEnd
+    if (lastTurnEnd !== null && lastTurnEnd !== undefined && ATTENTION_TURN_ENDS.has(lastTurnEnd)) {
+      return 'attention'
+    }
+  }
+  if (running) return 'running'
+  if (unread) return 'unread'
+  return present ? 'present' : 'inactive'
 }
 
 /**
@@ -495,6 +571,51 @@ export function visibleSessionIds(
     const s = list.byId[id]
     return s !== undefined && sessionVisible(s, current, archived, archivedFilter)
   })
+}
+
+/**
+ * Member Workspaces of one folder, in the browser's own Workspace order.
+ * @param groups - derived Workspace groups in browser order.
+ * @param workspaceIds - folder membership; ids absent from `groups` are ignored.
+ * @returns the folder's groups in folder-member order.
+ */
+export function folderMemberGroups(
+  groups: readonly GroupNode[],
+  workspaceIds: readonly WorkspaceId[],
+): GroupNode[] {
+  const byWorkspace = new Map(groups.flatMap(group =>
+    group.workspaceId === undefined ? [] : [[group.workspaceId, group] as const]))
+  return workspaceIds.flatMap((id) => {
+    const group = byWorkspace.get(id)
+    return group === undefined ? [] : [group]
+  })
+}
+
+/**
+ * Split derived Workspace groups into folder sections plus the loose remainder.
+ * A Workspace belongs to at most one folder; the loose remainder is every
+ * Workspace no folder claims, in browser order, plus the ungrouped bucket.
+ * @param groups - derived Workspace groups in browser order.
+ * @param folders - folder projection; empty when the capability is absent.
+ * @returns folder sections in folder order and the loose groups after them.
+ */
+export function layoutFolderSections(
+  groups: readonly GroupNode[],
+  folders: readonly { folderId: string; title: string; workspaceIds: readonly WorkspaceId[]; expanded: boolean }[],
+): { sections: readonly { folder: FolderHeaderNode; groups: readonly GroupNode[] }[]; loose: readonly GroupNode[] } {
+  const claimed = new Set<WorkspaceId>(folders.flatMap(folder => folder.workspaceIds))
+  return {
+    sections: folders.map(folder => ({
+      folder: {
+        folderId: folder.folderId,
+        title: folder.title,
+        workspaceIds: folder.workspaceIds,
+        expanded: folder.expanded,
+      },
+      groups: folderMemberGroups(groups, folder.workspaceIds),
+    })),
+    loose: groups.filter(group => group.workspaceId === undefined || !claimed.has(group.workspaceId)),
+  }
 }
 
 /**

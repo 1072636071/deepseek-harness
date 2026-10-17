@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/api/workspace-folders/README.md
+/:
+  en: 67f33c846a25faca
+  zh: 67060c937c0c8923
+/deepseek-ai-dsh-api-workspace-folders:
+  en: 3aa8c917141496ba
+  zh: d9329fb6e923094f
+/deepseek-ai-dsh-api-workspace-folders/summary:
+  en: c2a05b45acf68699
+  zh: 439378e0ce5e152e
+/deepseek-ai-dsh-api-workspace-folders/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: be814bfc3b111e27
+/deepseek-ai-dsh-api-workspace-folders/use-this-package:
+  en: dab3609e33a9ecf6
+  zh: a9a626847aca563e
+/deepseek-ai-dsh-api-workspace-folders/understand-the-implementation:
+  en: ee0b3ebb16171cad
+  zh: 48b7ccd45d030433
+/deepseek-ai-dsh-api-workspace-folders/further-exploration:
+  en: f0b14db34569c5fa
+  zh: c03840c854c6dee4
+/deepseek-ai-dsh-api-workspace-folders/model-experience:
+  en: 9f32314eaaf278ac
+  zh: c394fb73ee283a54
+/deepseek-ai-dsh-api-workspace-folders/model-experience/kv-cache-effect:
+  en: ae785400906cb841
+  zh: cf534d96cc2e3ea2
+/deepseek-ai-dsh-api-workspace-folders/known-limitations-and-deferred-work:
+  en: 6823c3f575a31064
+  zh: 431004fdf33d9a28
+/deepseek-ai-dsh-api-workspace-folders/known-limitations-and-deferred-work/dev-note:
+  en: f9249b5b5451d161
+  zh: b1f9f19a34937699

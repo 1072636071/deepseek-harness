@@ -182,3 +182,27 @@ Docs accompany every code change: update affected README and JSDoc contracts tog
 ## Vendoring policy
 
 `vendor/` packages are pinned source copies (manifest with upstream SHAs in [vendor/README.md](vendor/README.md)). Update via the sync procedure there; re-apply or retire the logged local modifications; rerun `pnpm run test && pnpm run build`.
+
+
+
+<!-- weknora-kb-ops:begin -->
+## 知识库（WeKnora · deepseek-harness）
+
+本项目的可复用结论统一沉淀到团队知识库：**入库前查重、入库后以库为准**。
+
+- 库：`deepseek-harness`，kb_id `58dee114-72b0-4f08-98b7-e9c12c96516b`
+- UI：<http://123.206.125.149:8127>/platform/knowledge-bases/58dee114-72b0-4f08-98b7-e9c12c96516b
+- REST base：`http://123.206.125.149:8127/api/v1`（请求头 `X-API-Key`）
+- 凭据腿：坚果云 `项目机密\Secret\WeKnora-知识库-API密钥.md`——**key 只现取现用，不进仓库 / 文档 / 工单 / 回显**
+- 运维技能：`weknora-kb-ops`；完整写入 / 查询 / 标签 / 端点规范见 `docs/agents/knowledge-base.md`
+- 安装与体检（全局脚本，由该技能分发，见 JwikisSkills `base/skills/TDB-AM/weknora-kb-ops/scripts/`）：
+  - 体检：`pwsh -File scripts/kb-check.ps1`（转发壳，自动定位技能目录里的全局脚本）
+  - 接入新工作区：`pwsh -File <技能目录>/scripts/kb-install.ps1 -Kb <kb_id> -KbName "<库名>" -Workspace .`
+
+### 强制约束（硬性 · 任务完成前逐条核验）
+
+1. **结论当日入库**——本次新确认的表结构、业务口径、踩坑结论、决策记录，当天写入知识库并挂对应领域标。只留在对话或本地文档里 = 任务未完成。
+2. **入库前先查重**——写入前用 `POST /knowledge-bases/{kb}/hybrid-search`（body 字段名是 `query_text`，不是 `query`）查同名 / 同主题；命中既有条目就改那一条（`PUT /knowledge/manual/{id}`，`status` 必传），不要新建第二份。
+3. **事实冲突必须双向修正**——代码 / 文档 / 库内条目三方打架时禁止只改一边。权威顺序：**用户输入与本次实测 > 知识库 > 记忆**；过时一方立即改到逐字一致，不留「待核对」。
+4. **每条结论必须可回溯**——入库正文写清证据位置（表名+字段 / 脚本路径 / ADR 编号）。查不到出处的结论不进库。
+<!-- weknora-kb-ops:end -->
