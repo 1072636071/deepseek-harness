@@ -255,6 +255,15 @@ export const OPEN_IN_APP_CATALOG: readonly OpenInAppApp[] = [
     id: 'zed',
     platforms: {
       darwin: macApp('Zed.app', 'Zed Preview.app'),
+      // Zed's Inno Setup installer writes an Uninstall record for both its
+      // per-user and machine scopes and registers no App Paths entry; the two
+      // documented default directories cover installs whose record is gone,
+      // and the `zed.exe` CLI the installer puts on PATH is the last resort.
+      win32: spec(
+        installRecord('Zed'),
+        file(['${LOCALAPPDATA}/Programs/Zed/Zed.exe', '${ProgramFiles}/Zed/Zed.exe']),
+        cli('zed'),
+      ),
       linux: desktopSpec('dev.zed.Zed', cli('zed'), { kind: 'desktop', desktopId: 'dev.zed.Zed', args: [] }),
     },
   },

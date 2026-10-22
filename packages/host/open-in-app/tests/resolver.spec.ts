@@ -392,6 +392,55 @@ describe('resolveLaunch locators', () => {
     }))).resolves.toBeNull()
   })
 
+  it('resolves Windows Zed from its installer record, default directories, or PATH CLI', async () => {
+    const root = await tempRoot()
+    const installed = join(root, 'Zed.exe')
+    await writeFile(installed, 'exe')
+    const run = runner((command, args) => {
+      if (command !== 'reg.exe') return null
+      const key = String(args[1])
+      if (key.includes('App Paths')) return ''
+      return [
+        `${key}\\Zed_is1`,
+        '    DisplayName    REG_SZ    Zed',
+        '    InstallLocation    REG_SZ    ',
+        `    DisplayIcon    REG_SZ    ${installed}`,
+        '',
+      ].join('\r\n')
+    })
+    // The installer record proves a custom install directory with no
+    // well-known path and no PATH entry.
+    await expect(resolveLaunch(byId('zed'), TIMEOUT_MS, bare({
+      platform: 'win32', env: {}, run,
+    }))).resolves.toEqual({
+      launch: { kind: 'argv', command: installed, args: [] },
+      icon: { kind: 'executable', path: installed },
+    })
+
+    // The documented per-user and per-machine default directories cover an
+    // install whose registry record is missing.
+    const localAppData = await tempRoot()
+    const programFiles = await tempRoot()
+    await mkdir(join(programFiles, 'Zed'), { recursive: true })
+    await writeFile(join(programFiles, 'Zed', 'Zed.exe'), 'exe')
+    await expect(resolveLaunch(byId('zed'), TIMEOUT_MS, bare({
+      platform: 'win32', env: { LOCALAPPDATA: localAppData, ProgramFiles: programFiles },
+    }))).resolves.toMatchObject({
+      launch: { kind: 'argv', command: `${programFiles}/Zed/Zed.exe` },
+    })
+
+    // A `zed.exe` on PATH remains the last resort.
+    await expect(resolveLaunch(byId('zed'), TIMEOUT_MS, bare({
+      platform: 'win32', env: {}, resolveExecutable: pathTable({ zed: 'C:\\Zed\\bin\\zed.exe' }),
+    }))).resolves.toEqual({
+      launch: { kind: 'argv', command: 'C:\\Zed\\bin\\zed.exe', args: [] },
+      icon: { kind: 'executable', path: 'C:\\Zed\\bin\\zed.exe' },
+    })
+
+    // With none of the three, Zed stays out of the menu.
+    await expect(resolveLaunch(byId('zed'), TIMEOUT_MS, bare({ platform: 'win32', env: {} }))).resolves.toBeNull()
+  })
+
   it('falls back to the desktop entry when the CLI is off PATH, honoring TryExec and quoted Exec', async () => {
     const home = await tempRoot()
     const applications = join(home, '.local', 'share', 'applications')
