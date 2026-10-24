@@ -10,7 +10,7 @@ The three out-of-process subagent providers (acp, claude-code, codex) each carri
 
 ## Decision
 
-`packages/subagent/subagent/src/provider-lifecycle.ts` (exported through `@deepseek-ai/dsh-subagent`) is now the single source:
+`packages/subagent/subagent/src/internal.ts` (exported through `@deepseek-ai/dsh-subagent`) is now the single source:
 
 - `DEFAULT_DISPOSE_EOF_GRACE_MS` / `DEFAULT_DISPOSE_GRACE_MS` — the three providers re-export them, so config defaults and tests read one definition.
 - `providerTextTask(prompt, pkg)` — the identical text-only/non-empty validation with the caller's package prefix; claude-code joins the result, codex keeps the array.

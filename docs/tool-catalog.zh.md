@@ -663,7 +663,7 @@ ask_user_question 默认保持原有阻塞行为；设置 `mode: timed` 后才�
   "properties": {
     "description": {
       "type": "string",
-      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"npm install\" → \"Install package dependencies\"."
+      "description": "What this command does, active voice, 5-10 words (shown in the UI). Example: \"ls\" → \"List files in current directory\"."
     },
     "command": {
       "type": "string",
@@ -675,7 +675,7 @@ ask_user_question 默认保持原有阻塞行为；设置 `mode: timed` 后才�
     },
     "workdir": {
       "type": "string",
-      "description": "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
+      "description": "Working directory; defaults to the session workspace. Relative paths resolve against it."
     },
     "run_in_background": {
       "type": "boolean",
@@ -751,7 +751,7 @@ bash 工具是 bash 执行器 seam 面向模型的消费方。组合中有 job �
   "properties": {
     "description": {
       "type": "string",
-      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"Get-Process\" → \"List running processes\"."
+      "description": "What this command does, active voice, 5-10 words (shown in the UI). Example: \"ls\" → \"List files in current directory\"."
     },
     "command": {
       "type": "string",
@@ -763,7 +763,7 @@ bash 工具是 bash 执行器 seam 面向模型的消费方。组合中有 job �
     },
     "workdir": {
       "type": "string",
-      "description": "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
+      "description": "Working directory; defaults to the session workspace. Relative paths resolve against it."
     },
     "run_in_background": {
       "type": "boolean",
@@ -2096,7 +2096,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 ### `subagent`
 
-将一项自包含任务委派给 subagent（在自身上下文中工作的独立 agent），用它卸载聚焦且独立的工作，例如研究、限定范围的实现或分析，以免消耗当前对话的上下文。subagent 会返回结果，但不会返回中间步骤。请提供完整、独立的提示词，因为它看不到当前对话。此工具启动独立管理的 subagent 并立即返回其 id。运行时会在任务结束时通知你。子代理通过 `send_message` 汇报结果；你可以使用 `send_message` 在运行时引导它，或在结束后继续对话。
+将一项自包含任务委派给 subagent（拥有自身上下文的独立 agent），用它卸载聚焦且独立的工作——研究、限定范围的实现、分析——而不消耗当前对话的上下文。subagent 返回结果，不返回中间步骤。请提供完整、独立的提示词，因为它看不到当前对话。此工具启动独立管理的 subagent 并立即返回其 id。运行时会在任务结束时通知你。子代理通过 `send_message` 汇报结果；你可以使用 `send_message` 在运行时引导它，或在结束后继续对话。
 
 ```json
 {

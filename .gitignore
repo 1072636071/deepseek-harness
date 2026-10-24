@@ -54,3 +54,7 @@ packages/experimental/webworker-runtime/src/**/*.js
 packages/experimental/webworker-runtime/src/**/*.js.map
 packages/experimental/webworker-runtime/src/**/*.d.ts
 packages/experimental/webworker-runtime/src/**/*.d.ts.map
+
+# Local agent scratch: work product and local memory, never maintained references
+.scratch/
+.workbuddy/

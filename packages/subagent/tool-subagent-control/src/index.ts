@@ -28,11 +28,10 @@ export function apply(ctx: Context): void {
   ctx.tools.register(markAdjacentAgentSendMessageTool(defineTool({
     name: 'send_message',
     description:
-      'Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. '
-      + 'Messaging an idle continuable subagent is the normal way to continue it: the message wakes it and the conversation '
-      + 'carries on with its earlier context intact. A one-shot subagent cannot be continued — messaging it fails with a '
-      + 'not-resumable error; start a new background subagent instead. '
-      + 'Returns delivery confirmation, not the agent\'s answer.',
+      'Send a message to an agent: a working agent receives it at its next step, an idle agent starts a new turn. '
+      + 'Messaging an idle continuable subagent is the normal way to continue it — it wakes with its context intact. '
+      + 'A one-shot subagent cannot be continued (not-resumable error); start a new background subagent instead. '
+      + "Returns delivery confirmation, not the agent's answer.",
     parameters: {
       agent_id: {
         type: 'string',
@@ -77,9 +76,9 @@ export function apply(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'interrupt_agent',
     description:
-      'Ask a subagent to stop its current work. This call returns without waiting for it to stop. '
-      + 'You can continue a local direct child\'s conversation later with send_message. '
-      + 'External executions stop permanently and cannot receive follow-ups. Subagents it started will keep running.',
+      'Ask a subagent to stop its current work; returns without waiting. '
+      + 'Continue a local direct child later with send_message. '
+      + 'External executions stop permanently and cannot receive follow-ups; subagents it started keep running.',
     parameters: {
       agent_id: {
         type: 'string',

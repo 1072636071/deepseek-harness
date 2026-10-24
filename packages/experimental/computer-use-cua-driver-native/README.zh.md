@@ -91,9 +91,9 @@ env -u NODE_USE_ENV_PROXY DSH_COMPUTER_USE_NATIVE_E2E=1 node node_modules/vitest
 ##### 原生 Cua Driver 指导文本
 
 ```markdown
-Cua Driver native computer-use tools operate the host desktop. Discover the exact app and window, then get a fresh window snapshot before acting. Use element_token from that snapshot, or coordinates from its screenshot. A new snapshot of that window invalidates its earlier element tokens. Select either target or the legacy pid/window_id fields; do not combine them.
+Cua Driver native computer-use tools drive the host desktop. Find the exact app and window, then snapshot it before acting. Target an element with element_token from that snapshot, or with coordinates from its screenshot; a newer snapshot of the same window invalidates earlier tokens. Set either target or the legacy pid/window_id fields, never both.
 
-Prefer background delivery. A refusal does not authorize a foreground retry. Verify the requested outcome from fresh state after an action; a delivered click alone does not prove the outcome. After cancellation, inspect current state before retrying because completed input is not rolled back. Other sessions and applications may change the same desktop.
+Prefer background delivery; a refusal does not authorize a foreground retry. Verify the outcome from fresh state after acting — a delivered click alone proves nothing. After cancellation, inspect state before retrying: completed input is not rolled back. Other sessions and applications may change the desktop.
 
 On macOS, cursor-overlay operations may return facility_unavailable even when screenshots and input work.
 ```

@@ -13,10 +13,11 @@ import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SidebarPanelMetadata, SidebarRootInjected } from './contract/slots.ts'
 import { HeaderLeadingControls } from './HeaderLeadingControls.tsx'
 import { SidebarRoot } from './SidebarRoot.tsx'
+import { createPanelListStore } from './stores.ts'
 import { en, zh, type SidebarKey } from './locales.ts'
 
 export type {
-  SidebarBrandMarkOwnerProps, SidebarBrandNameOwnerProps, SidebarFooterActionOwnerProps,
+  PanelListStoreHandle, SidebarBrandMarkOwnerProps, SidebarBrandNameOwnerProps, SidebarFooterActionOwnerProps,
   SidebarPanelIconOwnerProps, SidebarPanelMetadata,
   SidebarRootComponentProps, SidebarRootInjected, SidebarSectionOwnerProps, SidebarSettingsOwnerProps,
 } from './contract/slots.ts'
@@ -73,6 +74,7 @@ export function apply(ctx: ClientContext): void {
     },
     hooks: { panels, shortcuts: ctx.shortcuts.catalog },
   })
+  const panelListStore = createPanelListStore()
   ctx.slots.inject('sidebar', () => ctx.slots.register({
     name: 'sidebar',
     locale: NS,
@@ -85,6 +87,9 @@ export function apply(ctx: ClientContext): void {
       'sidebar.settings': { kind: 'single', scope: 'root' },
       'sidebar.footer.action': { kind: 'list', scope: 'root' },
     },
+    // The disclosure belongs to the shell: one root-scoped instance, whose
+    // own persistence keeps it across reloads.
+    store: panelListStore,
     inject: injectProps,
   }, SidebarRoot))
   // macOS desktop hides the collapsed sidebar entirely, so the open/New

@@ -44,7 +44,7 @@
           },
           "sandbox_permissions": {
             "type": "string",
-            "description": "The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.",
+            "description": "Wider sandbox mode for one retry of the exact operation the sandbox just denied; the retry asks the user for approval.",
             "enum": [
               "workspace-write",
               "danger-full-access"
@@ -52,7 +52,7 @@
           },
           "justification": {
             "type": "string",
-            "description": "Required with sandbox_permissions: one sentence for the user explaining why this exact file operation needs the wider access. Use the language of the user’s current request."
+            "description": "Required with sandbox_permissions: one sentence, in the user’s language, on why this exact file operation needs wider access."
           }
         },
         "required": [
@@ -132,7 +132,7 @@
     },
     {
       "name": "interrupt_agent",
-      "description": "Ask a subagent to stop its current work. This call returns without waiting for it to stop. You can continue a local direct child's conversation later with send_message. External executions stop permanently and cannot receive follow-ups. Subagents it started will keep running.",
+      "description": "Ask a subagent to stop its current work; returns without waiting. Continue a local direct child later with send_message. External executions stop permanently and cannot receive follow-ups; subagents it started keep running.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -257,7 +257,7 @@
     },
     {
       "name": "send_message",
-      "description": "Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Messaging an idle continuable subagent is the normal way to continue it: the message wakes it and the conversation carries on with its earlier context intact. A one-shot subagent cannot be continued — messaging it fails with a not-resumable error; start a new background subagent instead. Returns delivery confirmation, not the agent's answer.",
+      "description": "Send a message to an agent: a working agent receives it at its next step, an idle agent starts a new turn. Messaging an idle continuable subagent is the normal way to continue it — it wakes with its context intact. A one-shot subagent cannot be continued (not-resumable error); start a new background subagent instead. Returns delivery confirmation, not the agent's answer.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -294,7 +294,7 @@
     },
     {
       "name": "subagent",
-      "description": "Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes. The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.",
+      "description": "Delegate a self-contained task to a subagent (a separate agent with its own context) to offload focused, independent work — research, a scoped implementation, an analysis — without consuming this conversation's context. The subagent returns its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes. The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -319,7 +319,7 @@
     },
     {
       "name": "subagent_fork",
-      "description": "Delegate a task to a subagent that inherits this conversation: a child agent seeded with all completed turns so far (it does not see the current in-flight turn). Use this when the subtask builds on this conversation's context — a follow-up analysis, a review, a continuation — without consuming this conversation's context for the work itself. You receive its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes. The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.",
+      "description": "Delegate a task to a subagent that inherits this conversation: a child agent seeded with every completed turn so far (it does not see the current in-flight turn). Use it when the subtask builds on this conversation's context — a follow-up analysis, a review, a continuation — without spending this conversation's context on the work. You receive its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes. The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -463,7 +463,7 @@
     },
     {
       "name": "workflow",
-      "description": "Run a JavaScript workflow script that orchestrates subagents at scale. Use this for work that fans out across many independent pieces — an audit over many files, a migration, multi-angle research, adversarial verification of findings — where you write the orchestration as a script instead of delegating turn by turn.\n\nScript-body hooks:\n- `agent(prompt, opts?): Promise<any>` — run one subagent to completion. Without `opts.schema` it resolves to the child's final text; with `opts.schema` (an object-rooted JSON Schema using ONLY type/properties/required/additionalProperties/items/enum/const/oneOf) it resolves to the validated object. Resolves `null` when the child fails (filter with `.filter(Boolean)`). Other opts: `label` (display), `phase` (progress group), and independent `provider`/`model` LLM target overrides.\n- `pipeline(items, ...stages): Promise<any[]>` — run each item through the stages independently with NO barrier between stages (prefer this for multi-stage work). Each stage receives `(prev, item, index)`. A stage throw drops that ITEM to `null` and skips its remaining stages.\n- `parallel(thunks): Promise<any[]>` — run zero-argument functions concurrently and await ALL of them (a barrier; use only when a stage genuinely needs every prior result together). A throwing thunk resolves to `null`.\n- `phase(title)` — start a progress phase; `log(message)` — narrate progress; `args` — the tool call's `args` input, verbatim.\n\nMisused hooks (bad arguments, unknown options, unsupported schemas, tripped caps) end the whole script instead of producing `null`. The script has no filesystem, network, timer, or Node.js APIs; the agents do the work.",
+      "description": "Run a JavaScript workflow script that orchestrates subagents at scale: use it when work fans out across many independent pieces — multi-file audits, migrations, multi-angle research, adversarial verification — and scripting beats delegating turn by turn.\n\nScript-body hooks:\n- `agent(prompt, opts?): Promise<any>` — run one subagent to completion. Without `opts.schema` it resolves to the child's final text; with `opts.schema` (an object-rooted JSON Schema using ONLY type/properties/required/additionalProperties/items/enum/const/oneOf) it resolves to the validated object. Resolves `null` when the child fails (filter with `.filter(Boolean)`). Other opts: `label` (display), `phase` (progress group), and independent `provider`/`model` LLM target overrides.\n- `pipeline(items, ...stages): Promise<any[]>` — run each item through the stages independently with NO barrier between stages (prefer this for multi-stage work). Each stage receives `(prev, item, index)`. A stage throw drops that ITEM to `null` and skips its remaining stages.\n- `parallel(thunks): Promise<any[]>` — run zero-argument functions concurrently and await ALL of them (a barrier; use only when a stage genuinely needs every prior result together). A throwing thunk resolves to `null`.\n- `phase(title)` — start a progress phase; `log(message)` — narrate progress; `args` — the tool call's `args` input, verbatim.\n\nMisused hooks — bad arguments, unknown options, unsupported schemas, tripped caps — end the whole script instead of producing `null`. No filesystem, network, timer, or Node.js APIs; the agents do the work.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -568,7 +568,7 @@
           },
           "sandbox_permissions": {
             "type": "string",
-            "description": "The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.",
+            "description": "Wider sandbox mode for one retry of the exact operation the sandbox just denied; the retry asks the user for approval.",
             "enum": [
               "workspace-write",
               "danger-full-access"
@@ -576,7 +576,7 @@
           },
           "justification": {
             "type": "string",
-            "description": "Required with sandbox_permissions: one sentence for the user explaining why this exact file operation needs the wider access. Use the language of the user’s current request."
+            "description": "Required with sandbox_permissions: one sentence, in the user’s language, on why this exact file operation needs wider access."
           }
         },
         "required": [

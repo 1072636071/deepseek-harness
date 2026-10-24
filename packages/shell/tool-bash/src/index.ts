@@ -89,11 +89,11 @@ function validateBashArgs(args: BashToolArgs, effectiveMode: SandboxMode | undef
 
 function bashDescription(): string {
   return 'Execute a bash command (`bash -c`) and return its stdout/stderr. '
-    + 'Each call runs in a fresh shell; pass `workdir` instead of using `cd`. '
+    + 'Each call runs in a fresh shell; pass `workdir` instead of `cd`. '
     + `Managed \`$${DSH_ENV_PREFIX}*\` variables expose current harness environment facts. `
     + 'Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. '
-    + 'Provide `description` before `command` in the arguments. '
-    + 'Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. '
+    + 'Provide `description` before `command`. '
+    + 'Before any delete or move, verify the resolved absolute target path is the intended one; never run it against a computed path you have not checked. '
     + 'An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. '
     + 'Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.'
 }
@@ -372,9 +372,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         description: {
           type: 'string',
           required: true,
-          description: 'Clear, concise description of what this command does in active voice, '
-            + '5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; '
-            + '"git status" → "Show working tree status"; "npm install" → "Install package dependencies".',
+          description: 'What this command does, active voice, 5-10 words (shown in the UI). Example: "ls" → "List files in current directory".',
         },
         command: { type: 'string', required: true, description: 'The bash command to execute.' },
         timeoutMs: {
@@ -383,7 +381,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             ? 'Timeout in milliseconds. The executor applies its configured default and cap; on expiry the command moves to the background as a job instead of being killed.'
             : 'Timeout in milliseconds. The executor applies its configured default and cap, and kills the command on expiry.',
         },
-        workdir: { type: 'string', description: 'Working directory for this command. Defaults to the session workspace; a relative path is resolved against it.' },
+        workdir: { type: 'string', description: 'Working directory; defaults to the session workspace. Relative paths resolve against it.' },
         ...background ? {
           run_in_background: { type: 'boolean' as const, description: 'Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies.' },
         } : {},
@@ -395,8 +393,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           },
           justification: {
             type: 'string' as const,
-            description: 'Required with sandbox_permissions: one sentence for the user explaining why this exact command needs the wider access. '
-              + 'Use the language of the user’s current request.',
+            description: 'Required with sandbox_permissions: one sentence, in the user’s language, on why this exact command needs wider access.',
           },
         } : {},
       },

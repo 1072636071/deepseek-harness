@@ -112,7 +112,7 @@ kind: "package-reference"
 ##### Ralph 指导
 
 ```markdown
-Use the ralph tool ONLY when the direct human explicitly asks for a Ralph loop or fresh-agent iterative execution. Each Ralph round starts a fresh child with no conversation seed and uses the shared workspace as durable memory. Completion and blockers are worker reports, not independent evaluation. Use same-session goal tools for ordinary long-running objectives, and plain subagents or workflows for bounded delegation and fan-out.
+Use the ralph tool ONLY when the direct human explicitly asks for a Ralph loop or fresh-agent iterative execution. Each round starts a fresh child with no conversation seed; the shared workspace is its durable memory. Completion and blockers are worker reports, not independent evaluation. For ordinary long-running objectives use same-session goal tools; for bounded delegation and fan-out use plain subagents or workflows.
 ```
 
 #### Token 影响

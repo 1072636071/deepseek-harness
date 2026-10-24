@@ -121,7 +121,7 @@ The model receives one fixed prior-history guidance section.
 ##### Prior-history guidance
 
 ```markdown
-Use session_search to find relevant work from prior sessions, or session_event_search to search earlier events in one session. Search results are cursor-free and workspace-scoped. Follow a useful hit with session_trace, session_event_trace, or session_event_read when you need lineage, relationships, or exact data.
+Use session_search to find work from prior sessions, or session_event_search to search earlier events in one session. Results are cursor-free and workspace-scoped. Follow a useful hit with session_trace, session_event_trace, or session_event_read for lineage, relationships, or exact data.
 ```
 
 #### Token effect

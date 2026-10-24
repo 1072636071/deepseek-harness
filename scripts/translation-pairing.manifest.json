@@ -5,9 +5,16 @@
     ".agents/notes/implemented/CLAUDE.md",
     ".github/review-ownership/README.md",
     "docs/AGENTS.md",
+    "docs/agents/domain.md",
+    "docs/agents/issue-tracker.md",
+    "docs/agents/knowledge-base.md",
+    "docs/agents/triage-labels.md",
     "docs/cordis-api/inherited.md",
     "docs/i18n/style-samples.md",
     "docs/i18n/terminology.md",
-    "docs/i18n/translation-prompt.md"
+    "docs/i18n/translation-prompt.md",
+    "docs/memorial/",
+    "docs/经验文档/",
+    "docs/自定义插件/"
   ]
 }

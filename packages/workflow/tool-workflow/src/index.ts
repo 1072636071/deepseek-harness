@@ -155,15 +155,15 @@ function createWorkflowRecorder(ctx: Context): WorkflowRecorder {
  * their exact semantics, and the supported schema subset. Parameter-level
  * rules live in the parameter descriptions.
  */
-const DESCRIPTION = `Run a JavaScript workflow script that orchestrates subagents at scale. Use this for work that fans out across many independent pieces — an audit over many files, a migration, multi-angle research, adversarial verification of findings — where you write the orchestration as a script instead of delegating turn by turn.
+const DESCRIPTION = `Run a JavaScript workflow script that orchestrates subagents at scale: use it when work fans out across many independent pieces — multi-file audits, migrations, multi-angle research, adversarial verification — and scripting beats delegating turn by turn.
 
-Script-body hooks:
-- \`agent(prompt, opts?): Promise<any>\` — run one subagent to completion. Without \`opts.schema\` it resolves to the child's final text; with \`opts.schema\` (an object-rooted JSON Schema using ONLY type/properties/required/additionalProperties/items/enum/const/oneOf) it resolves to the validated object. Resolves \`null\` when the child fails (filter with \`.filter(Boolean)\`). Other opts: \`label\` (display), \`phase\` (progress group), and independent \`provider\`/\`model\` LLM target overrides.
-- \`pipeline(items, ...stages): Promise<any[]>\` — run each item through the stages independently with NO barrier between stages (prefer this for multi-stage work). Each stage receives \`(prev, item, index)\`. A stage throw drops that ITEM to \`null\` and skips its remaining stages.
-- \`parallel(thunks): Promise<any[]>\` — run zero-argument functions concurrently and await ALL of them (a barrier; use only when a stage genuinely needs every prior result together). A throwing thunk resolves to \`null\`.
-- \`phase(title)\` — start a progress phase; \`log(message)\` — narrate progress; \`args\` — the tool call's \`args\` input, verbatim.
+Hooks in the script body:
+- \`agent(prompt, opts?)\` → one subagent's result: final text, or the validated object when \`opts.schema\` is an object-rooted JSON Schema limited to type/properties/required/additionalProperties/items/enum/const/oneOf. Child failure resolves \`null\` (filter with \`.filter(Boolean)\`). Other opts: \`label\`, \`phase\`, \`provider\`, \`model\`.
+- \`pipeline(items, ...stages)\` → each item runs the stages independently, NO barrier between stages (prefer for multi-stage work); stage signature \`(prev, item, index)\`; a stage throw drops that ITEM to \`null\` and skips its remaining stages.
+- \`parallel(thunks)\` → zero-argument functions run concurrently and ALL are awaited (a barrier; use only when a stage needs every prior result together); a throwing thunk resolves \`null\`.
+- \`phase(title)\`, \`log(message)\`, \`args\` (this call's input, verbatim).
 
-Misused hooks (bad arguments, unknown options, unsupported schemas, tripped caps) end the whole script instead of producing \`null\`. The script has no filesystem, network, timer, or Node.js APIs; the agents do the work.`
+Misused hooks — bad arguments, unknown options, unsupported schemas, tripped caps — end the whole script instead of producing \`null\`. No filesystem, network, timer, or Node.js APIs; the agents do the work.`
 
 type WorkflowCallArgs = {
   script: string
@@ -326,7 +326,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.systemPrompt.section({
     name: `tool:${toolName}`,
     order: ctx.systemPrompt.getSectionOrder('TOOL_WORKFLOW'),
-    text: `Use the ${toolName} tool ONLY when the user explicitly asks for a workflow or for large multi-agent orchestration: you write a JavaScript script (the tool description documents the exact format) that fans work out across many subagents with phases and structured results. For one or two delegations, prefer plain subagent calls.`,
+    text: `Use the ${toolName} tool ONLY when the user explicitly asks for a workflow or for large multi-agent orchestration: write a JavaScript script (the tool description documents the exact format) that fans work out across many subagents with phases and structured results. For one or two delegations, prefer plain subagent calls.`,
   })
   ctx.tools.register(defineTool({
     name: toolName,

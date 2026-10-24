@@ -7,11 +7,12 @@
  * `sidebar.settings` registrant's (ui-settings), followed by optional footer
  * actions in `sidebar.footer.action`.
  */
-import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
+import type { createPanelListStore } from '../stores.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
@@ -84,6 +85,9 @@ export interface SidebarPanelMetadata {
   label: string
 }
 
+/** The shell's declared panel-list disclosure store handle. */
+export type PanelListStoreHandle = ReturnType<typeof createPanelListStore>
+
 /**
  * Owner share of the browser hole — the only facts crossing the shell/region
  * boundary. Business data and actions arrive through the region's own inject.
@@ -131,8 +135,9 @@ export type SidebarRootInjected = {
 
 /**
  * Full component props: layout owner state/actions plus the declared holes'
- * render shares, this package's injected callbacks, and the standard locale
- * seat. Panel metadata arrives through an injected observable.
+ * render shares, this package's injected callbacks, the panel-list disclosure
+ * store, and the standard locale seat. Panel metadata arrives through an
+ * injected observable.
  */
 export type SidebarRootComponentProps =
   PropsRuntime<'sidebar'>
@@ -145,4 +150,4 @@ export type SidebarRootComponentProps =
     | 'sidebar.settings'
     | 'sidebar.footer.action'
   >
-  & InjectFace<SidebarRootInjected> & PropsLocale<'sidebar'>
+  & PropsStore<PanelListStoreHandle> & InjectFace<SidebarRootInjected> & PropsLocale<'sidebar'>

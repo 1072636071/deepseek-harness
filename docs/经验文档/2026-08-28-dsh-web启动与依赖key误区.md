@@ -23,7 +23,7 @@
 ### 3. 被删除包的 gitignore 残留会毒化 client 构建
 
 - 症状：`pnpm run build` 在 tsdown client 阶段报 7 个 `MISSING_EXPORT`，指向 `lib/types/api-proxy.js` 引用 `dsh-agent-presets`/`dsh-api-remotes` 中不存在的导出。
-- 根因：commit `4f00a8b82a refactor(api): remove ApiProxy package` 已删包，但 `packages/host/apiproxy/` 下残留旧 `lib/`（被 gitignore，`git status` 不可见），client 构建把它卷进来。
+- 根因：`refactor(api): remove ApiProxy package` 这个 commit 已删包，但 `packages/host/apiproxy/` 下残留旧 `lib/`（被 gitignore，`git status` 不可见），client 构建把它卷进来。
 - 修复：`pnpm run clean`（自带"清已删包残留"职责，本次删了 264 个路径）→ 全量重建通过。推论：凡在 master 合并后出现"引用了源码里根本不存在的导出"类构建错误，先怀疑残留产物，clean 再 build。
 
 ### 4. 管道吃掉退出码，误报构建成功

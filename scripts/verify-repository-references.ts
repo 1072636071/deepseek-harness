@@ -12,7 +12,10 @@ const organizationUrl = new RegExp(`\\bgithub\\.com/${organization}(?![a-z0-9-])
 // The independent kit repository owns the engine source and documentation.
 const kitRepositoryUrl = new RegExp(`\\bgithub\\.com/${organization}/libreoffice-kit(?:\\.git)?(?=/|[^a-zA-Z0-9_.-]|$)`, 'g')
 const commitCandidate = /(?<![a-z0-9])[\da-f]{7,40}(?![a-z0-9])/gi
-const excludedPrefixes = ['vendor/', '.agents/notes/archived/']
+// Vendored and frozen sources are sealed; local agent scratch holds work product and local memory.
+const excludedPrefixes = ['vendor/', '.agents/notes/archived/', '.scratch/', '.workbuddy/']
+// Lockfiles record artifact digests and sizes; a hex token that names a commit is not a reference.
+const excludedFiles = ['python/sdk/uv.lock']
 const gitOutputLimit = 64 * 1024 * 1024
 // One 41-byte line per object; 1.2 million objects produce about 49 MiB.
 const objectListingLimit = 1024 * 1024 * 1024
@@ -28,7 +31,7 @@ export interface RepositoryReference {
 }
 
 function isMaintained(file: string): boolean {
-  return !excludedPrefixes.some(prefix => file.startsWith(prefix))
+  return !excludedFiles.includes(file) && !excludedPrefixes.some(prefix => file.startsWith(prefix))
 }
 
 /**

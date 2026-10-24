@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for 2026-10-21-sidebar-panel-group.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-10-21-sidebar-panel-group.md
+/agent-note-bounded-sidebar-global-panel-list:
+  en: 4deebe9f39545f76
+  zh: 473c41877feacb6f
+/agent-note-bounded-sidebar-global-panel-list/problem:
+  en: 6ddfc884adbb35a3
+  zh: 95e20312118ed154
+/agent-note-bounded-sidebar-global-panel-list/decision:
+  en: 1787d4664e004d06
+  zh: 987d003d78187b13
+/agent-note-bounded-sidebar-global-panel-list/decision/why-the-shell-not-the-panel-registry:
+  en: 9620999898bbe7f5
+  zh: e92577a794831342
+/agent-note-bounded-sidebar-global-panel-list/decision/placeholder-rows-versus-unmounted-rows:
+  en: b61dee77dd38e831
+  zh: 17362ae46037b536
+/agent-note-bounded-sidebar-global-panel-list/decision/selection-inside-a-closed-group:
+  en: ffee45d27ebae563
+  zh: de5f2e9315b45ff7
+/agent-note-bounded-sidebar-global-panel-list/decision/rail-width:
+  en: fd6c9d20e659aecc
+  zh: 293d0915daa8f40f
+/agent-note-bounded-sidebar-global-panel-list/decision/persistence:
+  en: f7aeac8a1dfc2f08
+  zh: e65fb48d23f8fd17
+/agent-note-bounded-sidebar-global-panel-list/alternatives-considered:
+  en: a34bfed75dbde3fb
+  zh: 35dcd6f89f9d05a0
+/agent-note-bounded-sidebar-global-panel-list/consequences:
+  en: c8ff2fa92abe4dee
+  zh: 1785750f00bf7797

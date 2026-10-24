@@ -651,7 +651,7 @@ exit_plan_mode stays in the model-facing schema while planning is inactive so tr
 
 ### `bash`
 
-Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell; pass `workdir` instead of using `cd`. Managed `$DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Provide `description` before `command` in the arguments. Before any delete or move, verify that the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.
+Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs in a fresh shell; pass `workdir` instead of `cd`. Managed `$DSH_*` variables expose current harness environment facts. Long output is truncated to its tail; the full output is saved to a file whose path is reported when available. Provide `description` before `command`. Before any delete or move, verify the resolved absolute target path is the intended one; never run it against a computed path you have not checked. An unset variable expands to an empty string, so guard variables in such paths with `${VAR:?}`. Commands may run under a file sandbox; a blocked file operation is reported as `[sandbox: file access denied under <mode> mode]`, a policy denial: do not retry another way.
 
 ```json
 {
@@ -659,7 +659,7 @@ Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs 
   "properties": {
     "description": {
       "type": "string",
-      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"npm install\" → \"Install package dependencies\"."
+      "description": "What this command does, active voice, 5-10 words (shown in the UI). Example: \"ls\" → \"List files in current directory\"."
     },
     "command": {
       "type": "string",
@@ -671,7 +671,7 @@ Execute a bash command (`bash -c`) and return its stdout/stderr. Each call runs 
     },
     "workdir": {
       "type": "string",
-      "description": "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
+      "description": "Working directory; defaults to the session workspace. Relative paths resolve against it."
     },
     "run_in_background": {
       "type": "boolean",
@@ -747,7 +747,7 @@ Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Eac
   "properties": {
     "description": {
       "type": "string",
-      "description": "Clear, concise description of what this command does in active voice, 5-10 words (shown in the UI). Examples: \"ls\" → \"List files in current directory\"; \"git status\" → \"Show working tree status\"; \"Get-Process\" → \"List running processes\"."
+      "description": "What this command does, active voice, 5-10 words (shown in the UI). Example: \"ls\" → \"List files in current directory\"."
     },
     "command": {
       "type": "string",
@@ -759,7 +759,7 @@ Execute a PowerShell command (`pwsh -Command`) and return its stdout/stderr. Eac
     },
     "workdir": {
       "type": "string",
-      "description": "Working directory for this command. Defaults to the session workspace; a relative path is resolved against it."
+      "description": "Working directory; defaults to the session workspace. Relative paths resolve against it."
     },
     "run_in_background": {
       "type": "boolean",
@@ -2090,7 +2090,7 @@ Source: [`packages/subagent/tool-subagent/src/list-models.ts`](../packages/subag
 
 ### `subagent`
 
-Delegate a self-contained task to a subagent (a separate agent that works in its own context) to offload focused, independent work — research, a scoped implementation, an analysis — so it does not consume this conversation's context. The subagent returns its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes. The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.
+Delegate a self-contained task to a subagent (a separate agent with its own context) to offload focused, independent work — research, a scoped implementation, an analysis — without consuming this conversation's context. The subagent returns its result, not its intermediate steps. This tool starts an independently managed subagent and immediately returns its id. The runtime notifies you when it finishes. The child reports results with `send_message`; use `send_message` to steer it while running or continue its conversation after it finishes.
 
 ```json
 {
@@ -2126,7 +2126,7 @@ The registered delegation name is the load-time `toolName` config (default `suba
 
 ### `interrupt_agent`
 
-Ask a subagent to stop its current work. This call returns without waiting for it to stop. You can continue a local direct child's conversation later with send_message. External executions stop permanently and cannot receive follow-ups. Subagents it started will keep running.
+Ask a subagent to stop its current work; returns without waiting. Continue a local direct child later with send_message. External executions stop permanently and cannot receive follow-ups; subagents it started keep running.
 
 ```json
 {
@@ -2169,7 +2169,7 @@ Source: [`packages/subagent/tool-subagent-control/src/list-agents.ts`](../packag
 
 ### `send_message`
 
-Send a message to an agent. A working agent receives it at its next step; an idle agent starts a new turn with it. Messaging an idle continuable subagent is the normal way to continue it: the message wakes it and the conversation carries on with its earlier context intact. A one-shot subagent cannot be continued — messaging it fails with a not-resumable error; start a new background subagent instead. Returns delivery confirmation, not the agent's answer.
+Send a message to an agent: a working agent receives it at its next step, an idle agent starts a new turn. Messaging an idle continuable subagent is the normal way to continue it — it wakes with its context intact. A one-shot subagent cannot be continued (not-resumable error); start a new background subagent instead. Returns delivery confirmation, not the agent's answer.
 
 ```json
 {
@@ -2638,7 +2638,7 @@ Reads or changes the calling Session directory. Existing shells and processes re
 
 ### `create_worktree`
 
-Create a new Git branch and worktree from a local commit, branch, or tag, then change this session's working directory to it. Defaults to HEAD and a generated name. Uncommitted files stay in the source checkout. Existing names fail. Use working_directory with cd to leave; the checkout and branch remain.
+Create a Git branch and worktree from a local commit, branch, or tag, then make it this session's working directory. Defaults: HEAD, generated name. Uncommitted files stay in the source checkout; existing names fail. Leave with working_directory cd; checkout and branch remain.
 
 ```json
 {
@@ -2666,15 +2666,15 @@ Explicit experimental composition only. Creates a new branch and checkout from a
 
 ### `workflow`
 
-Run a JavaScript workflow script that orchestrates subagents at scale. Use this for work that fans out across many independent pieces — an audit over many files, a migration, multi-angle research, adversarial verification of findings — where you write the orchestration as a script instead of delegating turn by turn.
+Run a JavaScript workflow script that orchestrates subagents at scale: use it when work fans out across many independent pieces — multi-file audits, migrations, multi-angle research, adversarial verification — and scripting beats delegating turn by turn.
 
-Script-body hooks:
-- `agent(prompt, opts?): Promise<any>` — run one subagent to completion. Without `opts.schema` it resolves to the child's final text; with `opts.schema` (an object-rooted JSON Schema using ONLY type/properties/required/additionalProperties/items/enum/const/oneOf) it resolves to the validated object. Resolves `null` when the child fails (filter with `.filter(Boolean)`). Other opts: `label` (display), `phase` (progress group), and independent `provider`/`model` LLM target overrides.
-- `pipeline(items, ...stages): Promise<any[]>` — run each item through the stages independently with NO barrier between stages (prefer this for multi-stage work). Each stage receives `(prev, item, index)`. A stage throw drops that ITEM to `null` and skips its remaining stages.
-- `parallel(thunks): Promise<any[]>` — run zero-argument functions concurrently and await ALL of them (a barrier; use only when a stage genuinely needs every prior result together). A throwing thunk resolves to `null`.
-- `phase(title)` — start a progress phase; `log(message)` — narrate progress; `args` — the tool call's `args` input, verbatim.
+Hooks in the script body:
+- `agent(prompt, opts?)` → one subagent's result: final text, or the validated object when `opts.schema` is an object-rooted JSON Schema limited to type/properties/required/additionalProperties/items/enum/const/oneOf. Child failure resolves `null` (filter with `.filter(Boolean)`). Other opts: `label`, `phase`, `provider`, `model`.
+- `pipeline(items, ...stages)` → each item runs the stages independently, NO barrier between stages (prefer for multi-stage work); stage signature `(prev, item, index)`; a stage throw drops that ITEM to `null` and skips its remaining stages.
+- `parallel(thunks)` → zero-argument functions run concurrently and ALL are awaited (a barrier; use only when a stage needs every prior result together); a throwing thunk resolves `null`.
+- `phase(title)`, `log(message)`, `args` (this call's input, verbatim).
 
-Misused hooks (bad arguments, unknown options, unsupported schemas, tripped caps) end the whole script instead of producing `null`. The script has no filesystem, network, timer, or Node.js APIs; the agents do the work.
+Misused hooks — bad arguments, unknown options, unsupported schemas, tripped caps — end the whole script instead of producing `null`. No filesystem, network, timer, or Node.js APIs; the agents do the work.
 
 ```json
 {

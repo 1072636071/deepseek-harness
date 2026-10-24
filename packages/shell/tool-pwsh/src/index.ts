@@ -391,9 +391,7 @@ export function apply(ctx: Context, config: Config = {}): void {
         description: {
           type: 'string',
           required: true,
-          description: 'Clear, concise description of what this command does in active voice, '
-            + '5-10 words (shown in the UI). Examples: "ls" → "List files in current directory"; '
-            + '"git status" → "Show working tree status"; "Get-Process" → "List running processes".',
+          description: 'What this command does, active voice, 5-10 words (shown in the UI). Example: "ls" → "List files in current directory".',
         },
         command: { type: 'string', required: true, description: 'The PowerShell command to execute.' },
         timeoutMs: {
@@ -402,7 +400,7 @@ export function apply(ctx: Context, config: Config = {}): void {
             ? 'Timeout in milliseconds. The executor applies its configured default and cap; on expiry the command moves to the background as a job instead of being killed.'
             : 'Timeout in milliseconds. The executor applies its configured default and cap, and kills the command on expiry.',
         },
-        workdir: { type: 'string', description: 'Working directory for this command. Defaults to the session workspace; a relative path is resolved against it.' },
+        workdir: { type: 'string', description: 'Working directory; defaults to the session workspace. Relative paths resolve against it.' },
         ...background ? {
           run_in_background: { type: 'boolean' as const, description: 'Run in the background and return a job id immediately (collect with job_output, stop with job_kill). No timeout applies.' },
         } : {},
@@ -414,8 +412,7 @@ export function apply(ctx: Context, config: Config = {}): void {
           },
           justification: {
             type: 'string' as const,
-            description: 'Required with sandbox_permissions: one sentence for the user explaining why this exact command needs the wider access. '
-              + 'Use the language of the user’s current request.',
+            description: 'Required with sandbox_permissions: one sentence, in the user’s language, on why this exact command needs wider access.',
           },
         } : {},
       },

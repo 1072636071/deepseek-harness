@@ -10,7 +10,7 @@ Status: implemented
 
 ## 决策
 
-`packages/subagent/subagent/src/provider-lifecycle.ts`（经 `@deepseek-ai/dsh-subagent` 导出）现在是单一来源：
+`packages/subagent/subagent/src/internal.ts`（经 `@deepseek-ai/dsh-subagent` 导出）现在是单一来源：
 
 - `DEFAULT_DISPOSE_EOF_GRACE_MS` / `DEFAULT_DISPOSE_GRACE_MS` —— 三个 provider 转发导出，配置默认值与测试读到同一份定义。
 - `providerTextTask(prompt, pkg)` —— 完全相同的 text-only/非空校验加调用方包前缀；claude-code join 结果，codex 保留数组。

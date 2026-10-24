@@ -413,6 +413,7 @@ export interface DeepDivingPool {
   readonly en: readonly string[]
 }
 
+/** Random phrase pool for the deep-diving status line; zh and en align one-to-one by index. */
 export const deepDivingPool: DeepDivingPool = Object.freeze({
   zh: Object.freeze([
     'token，token，有 token 就干活。',

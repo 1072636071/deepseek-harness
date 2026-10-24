@@ -50,8 +50,8 @@ describe('the model-facing markers', () => {
   })
 
   it('the sandbox_permissions description names the family subject', () => {
-    expect(sandboxPermissionsDescription('command')).toBe('The narrowest wider sandbox mode for a one-shot retry of the exact command the sandbox just denied; the retry asks the user for approval.')
-    expect(sandboxPermissionsDescription('operation')).toBe('The narrowest wider sandbox mode for a one-shot retry of the exact operation the sandbox just denied; the retry asks the user for approval.')
+    expect(sandboxPermissionsDescription('command')).toBe('Wider sandbox mode for one retry of the exact command the sandbox just denied; the retry asks the user for approval.')
+    expect(sandboxPermissionsDescription('operation')).toBe('Wider sandbox mode for one retry of the exact operation the sandbox just denied; the retry asks the user for approval.')
   })
 
   it('the hint marker names the family subject', () => {

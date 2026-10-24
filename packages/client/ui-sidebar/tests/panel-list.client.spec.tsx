@@ -264,6 +264,32 @@ describe('sidebar global panels', () => {
     expect(layout.selectPanel).toHaveBeenCalledExactlyOnceWith(ALPHA)
   })
 
+  it('keeps the row list bounded through the real apply path and survives a remount', async () => {
+    const { runtime, locale, view } = await bench()
+    const t = locale.bind('sidebar-panel-test')
+    const ids = Array.from({ length: 7 }, (_, index) => `panel-${index}`)
+    const fibers = []
+    for (const [index, id] of ids.entries()) {
+      fibers.push(await mountPanel(runtime, {
+        id: id as MainPanelId, heading: `${id} content`, label: id, order: index * 10,
+      }))
+    }
+    const navigation = await view.findByRole('navigation', { name: 'Global panels' })
+    const toggle = within(navigation).getByRole('button', { name: 'More panels (3)' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(within(navigation).getAllByRole('button').map(row => row.getAttribute('aria-label')))
+      .toEqual(['panel-0', 'panel-1', 'panel-2', 'panel-3', 'More panels (3)'])
+    fireEvent.click(toggle)
+    expect(within(navigation).getAllByRole('button').map(row => row.getAttribute('aria-label')))
+      .toEqual(['panel-0', 'panel-1', 'panel-2', 'panel-3', 'Show fewer panels', 'panel-4', 'panel-5', 'panel-6'])
+    // The disclosure is a store fact, not component state: the shell keeps it
+    // when its registration is torn down and rebuilt.
+    expect(localStorage.getItem('dsh.sidebar.panels.v1')).toBe('{"overflowExpanded":true}')
+    for (const fiber of fibers) await fiber.dispose()
+    await waitFor(() => { expect(view.queryByRole('navigation')).toBeNull() })
+    expect(t).toBeTypeOf('function')
+  })
+
   it('disposes the sidebar while retaining independently owned main panel bodies', async () => {
     const { runtime, locale, sidebar, view } = await bench()
     await mountPanels(runtime, locale)

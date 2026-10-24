@@ -16,10 +16,11 @@
  * scrollbar indirection away while it is elsewhere, so a list the user is not
  * pointing at carries no bar.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  FishLogo, IconNewChatOutlineMedium, IconNewChatOutlineRegular, IconPanelLeftOutlineRegular, isDarwinDesktop, ShortcutKeys, Tooltip,
+  FishLogo, IconChevronDownOutlineRegular, IconNewChatOutlineMedium, IconNewChatOutlineRegular, IconPanelLeftOutlineRegular,
+  isDarwinDesktop, ShortcutKeys, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {
@@ -29,6 +30,13 @@ import css from './SidebarRoot.module.css'
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
 const COLLAPSE_SETTLE_MS = 150
+
+/**
+ * Panel rows drawn above the disclosure group. Every plugin contributes a
+ * row here, so the head stays short enough that the list cannot push the
+ * Workspace browser off the column.
+ */
+const PANEL_HEAD_ROWS = 4
 
 /**
  * How long the column's scrollbars stay drawn after the pointer leaves it.
@@ -80,6 +88,64 @@ function PanelRow({ id, label, wide, usePanelInfo, selectPanel, renderSlot }: Pa
   )
 }
 
+/** Props of the disclosure row that opens the panel rows past the pinned head. */
+type PanelGroupToggleProps = {
+  /** Ids the closed group holds, in display order. */
+  hiddenIds: readonly string[]
+  /** Whether the group is open. */
+  expanded: boolean
+  /** Whether the column renders wide content or the 56px rail. */
+  wide: boolean
+  /** Id of the group body this control expands. */
+  controls: string
+  onToggle: () => void
+  usePanelInfo: PropsRuntime<'sidebar'>['usePanelInfo']
+  t: SidebarRootComponentProps['t']
+}
+
+/**
+ * The group header. It renders at the panel rows' own geometry so the list
+ * reads as one rhythm, and keeps the count visible while collapsed — that
+ * number is the only cue that a plugin registered a row past the head.
+ *
+ * It owns the selection read for the ids it hides rather than taking the
+ * shell's: a panel switch then re-renders this one row, not the column (and
+ * not the Workspace browser nested in it).
+ */
+function PanelGroupToggle({ hiddenIds, expanded, wide, controls, onToggle, usePanelInfo, t }: PanelGroupToggleProps) {
+  // Closed, the header must say the selection is inside it; open, the rows
+  // themselves carry that, so the header stops reading as selected.
+  const holdsActive = usePanelInfo(info => !expanded
+    && info.activePanelId !== null
+    && hiddenIds.includes(info.activePanelId))
+  const label = expanded ? t('panels.collapse') : t('panels.expand', { count: hiddenIds.length })
+  const chevron = (
+    <IconChevronDownOutlineRegular
+      size={14}
+      className={expanded ? clsx(css.groupChevron, css.groupChevronOpen) : css.groupChevron}
+    />
+  )
+  return (
+    <Tooltip label={label} delayMs={500} disabled={wide}>
+      <button
+        type="button"
+        className={clsx(css.panelRow, css.panelGroupRow, holdsActive && css.panelActive)}
+        aria-label={label}
+        aria-expanded={expanded}
+        aria-controls={controls}
+        onClick={onToggle}
+      >
+        <span className={css.panelGlyph} aria-hidden="true">{chevron}</span>
+        {wide && (
+          <span className={clsx(css.panelTitle, css.panelGroupTitle, css.wide)}>
+            {label}
+          </span>
+        )}
+      </button>
+    </Tooltip>
+  )
+}
+
 /**
  * Render the sidebar column shell.
  * @param props - composed slot props (runtime share + injected callbacks, contract/slots.ts).
@@ -94,10 +160,14 @@ export function SidebarRoot({
   usePanels,
   useShortcuts,
   usePanelInfo,
+  useStore,
+  actions,
   t,
   renderSlot,
 }: SidebarRootComponentProps) {
   const panels = usePanels(snapshot => snapshot)
+  const overflowExpanded = useStore(state => state.overflowExpanded)
+  const groupBodyId = useId()
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
   const toggleLabel = collapsed ? t('toggle.open') : t('toggle.collapse')
@@ -276,21 +346,54 @@ export function SidebarRoot({
         </button>
       </Tooltip>
 
-      {panels.length > 0 && (
-        <nav className={css.panelList} aria-label={t('panels.label')}>
-          {panels.map(({ id, label }) => (
-            <PanelRow
-              key={id}
-              id={id}
-              label={label}
-              wide={wide}
-              usePanelInfo={usePanelInfo}
-              selectPanel={selectPanel}
-              renderSlot={renderSlot}
-            />
-          ))}
-        </nav>
-      )}
+      {panels.length > 0 && (() => {
+        // The rail is icon-only: a disclosure header has no room to name
+        // itself, so every panel renders as its own icon and nothing folds.
+        const grouped = wide && panels.length > PANEL_HEAD_ROWS
+        const head = grouped ? panels.slice(0, PANEL_HEAD_ROWS) : panels
+        const tail = grouped ? panels.slice(PANEL_HEAD_ROWS) : []
+        return (
+          <nav className={css.panelList} aria-label={t('panels.label')}>
+            {head.map(panel => (
+              <PanelRow
+                key={panel.id}
+                id={panel.id}
+                label={panel.label}
+                wide={wide}
+                usePanelInfo={usePanelInfo}
+                selectPanel={selectPanel}
+                renderSlot={renderSlot}
+              />
+            ))}
+            {grouped && (
+              <>
+                <PanelGroupToggle
+                  hiddenIds={tail.map(panel => panel.id)}
+                  expanded={overflowExpanded}
+                  wide={wide}
+                  controls={groupBodyId}
+                  onToggle={() => { actions.setOverflowExpanded(!overflowExpanded) }}
+                  usePanelInfo={usePanelInfo}
+                  t={t}
+                />
+                <div id={groupBodyId} className={css.panelGroup}>
+                  {overflowExpanded && tail.map(panel => (
+                    <PanelRow
+                      key={panel.id}
+                      id={panel.id}
+                      label={panel.label}
+                      wide={wide}
+                      usePanelInfo={usePanelInfo}
+                      selectPanel={selectPanel}
+                      renderSlot={renderSlot}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </nav>
+        )
+      })()}
 
       {/* The browsing region fills the column between the controls and the
           foot in both states; its rail icon column rides the same slot. */}
