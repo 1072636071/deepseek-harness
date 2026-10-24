@@ -483,7 +483,7 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   margin-bottom: 8px;
 }
 
@@ -521,6 +521,21 @@
   outline-offset: -2px;
 }
 
+/* The More launcher keeps the panel rows' geometry inside the menu's anchor wrapper. */
+.moreAnchor {
+  display: flex;
+  flex-direction: column;
+}
+
+.panelRow[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.moreMenu {
+  width: 288px;
+  max-width: calc(100vw - 24px);
+}
+
 .panelGlyph {
   flex: none;
   display: inline-flex;
@@ -535,39 +550,9 @@
   white-space: nowrap;
 }
 
-/* The disclosure header that holds the rows past the pinned head. It shares
-   .panelRow's box so the list keeps one rhythm; only its ink and the count
-   differ, which keeps it from reading as a destination. */
-.panelGroupRow {
-  color: var(--dsw-alias-label-secondary);
-}
-
-.panelGroupRow.panelActive {
-  color: var(--dsw-alias-label-primary);
-}
-
-.panelGroupTitle {
-  /* Tabular figures keep the count from jittering as plugins come and go. */
-  font-variant-numeric: tabular-nums;
-  font-weight: 400;
-}
-
-.groupChevron {
-  flex: none;
-  transition: transform 150ms var(--ds-ease-in-out);
-}
-
-.groupChevronOpen {
-  transform: rotate(180deg);
-}
-
-/* The group body: the same column rhythm as the list, so expanding it adds
-   rows rather than a nested block. Collapsed rows unmount, so no row inside
-   keeps a live subscription while hidden. */
-.panelGroup {
-  display: flex;
-  flex-direction: column;
-  gap: inherit;
+.collapsed .panelList {
+  gap: 12px;
+  margin-bottom: 12px;
 }
 
 .collapsed .panelRow {
