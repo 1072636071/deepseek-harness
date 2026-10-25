@@ -13,6 +13,7 @@ import {
   launchWebScaffold, readPersistedEvents, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import {
+  openPanelFromMore,
   connectFreshWorkspaceZh, expandOwningTurnProcess, PLUGIN_TOGGLE_SETTLE_MS, saveFailureShot, ZH_BROWSER_LOCALE,
 } from './support.ts'
 
@@ -194,7 +195,7 @@ it.skipIf(MODE === 'record')('persists Bing reasoning translation across reopen 
   const recordedModelHistory = session.deriveMessages(), recordedRequestHeader = session.requestHeader()
 
   await settings.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
-  await settings.getByRole('button', { name: '插件', exact: true }).click()
+  await openPanelFromMore(settings, 'zh', '插件')
   const panel = settings.locator('[data-plugin-panel]')
   await panel.getByRole('button', { name: '更多', exact: true }).click()
   const card = panel.locator(`[data-plugin-package="${BUNDLE_NAME}"]`)

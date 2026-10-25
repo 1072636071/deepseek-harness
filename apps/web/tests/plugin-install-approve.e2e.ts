@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { expect, it } from 'vitest'
 import { launchWebScaffold, captureStableAria, compareOrRefreshGolden, webSnapshotMode, watchConsole, type WebScaffold } from './scaffold.ts'
-import { ZH_BROWSER_LOCALE } from './support.ts'
+import { openPanelFromMore, ZH_BROWSER_LOCALE } from './support.ts'
 
 it('offers approval for blocked install scripts and installs once they are allowed', async () => {
   const scratch = await mkdtemp(join(tmpdir(), 'dsh-install-approve-'))
@@ -47,7 +47,7 @@ it('offers approval for blocked install scripts and installs once they are allow
       await page.goto(scaffold.authenticatedUrl)
       await page.waitForSelector('[class*="frame"]')
       if (await page.getByRole('dialog', { name: '设置' }).count() > 0) await page.keyboard.press('Escape')
-      await page.getByRole('navigation', { name: '全局面板' }).getByRole('button', { name: '插件', exact: true }).click()
+      await openPanelFromMore(page, 'zh', '插件')
       const panel = page.locator('[data-plugin-panel]')
       await panel.getByRole('button', { name: '添加插件', exact: true }).click()
       const dialog = page.getByRole('dialog')

@@ -11,7 +11,7 @@ import {
   captureStableAria, compareOrRefreshGolden, fixtureUserPrompts, launchWebScaffold, webSnapshotMode, watchConsole,
   type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage } from './support.ts'
+import { openPanelFromMore, connectFreshWorkspace, newEnglishPage } from './support.ts'
 
 const fixture = fileURLToPath(new URL('../../../snapshots/web/fresh-round-trip/session.v3.jsonl', import.meta.url))
 const expected = fileURLToPath(new URL('../../../snapshots/web/voice-input/ui.expected.md', import.meta.url))
@@ -206,7 +206,7 @@ it.skipIf(webSnapshotMode() === 'record')('guides voice setup, records from stan
   await mic.waitFor()
   await expect.poll(() => page.evaluate(() => (window as Window & { voiceTestStreams?: MediaStream[] }).voiceTestStreams!
     .every(stream => stream.getTracks().every(track => track.readyState === 'ended')))).toBe(true)
-  await page.getByRole('button', { name: 'Plugins', exact: true }).click()
+  await openPanelFromMore(page, 'en', 'Plugins')
   await page.locator('[data-plugin-package="@deepseek-ai/dsh-experimental-voice-input-bundle"]').waitFor()
   expect(await page.locator('[data-plugin-detail]').count()).toBe(0)
   await page.getByRole('button', { name: 'New session', exact: true }).filter({ hasText: 'New Session' }).click()

@@ -10,7 +10,7 @@ import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TrackProductEvent } from '@deepseek-ai/dsh-client-product-analytics/client'
 import { EntryMenuContent } from '../src/client/EntryMenuContent.tsx'
-import { en } from '../src/client/locales.ts'
+import { en, zh } from '../src/client/locales.ts'
 import { apply, inject } from '../src/client/index.ts'
 
 type Seats = 'sidebar.panellist.actions' | 'conversation.session.header.views.actions' | 'sidebar.right.tab.guide.actions'
@@ -43,8 +43,8 @@ function content(overrides: Partial<ContentProps> = {}) {
 }
 
 describe('More menu rows', () => {
-  it.each(['sidebar', 'rightbar'] as const)('shows only discovery and creation in %s regardless of entries', (region) => {
-    const b = content({ region, entries: [
+  it('browses and creates without panel rows in rightbar regardless of entries', () => {
+    const b = content({ region: 'rightbar', entries: [
       { id: 'notes', label: 'Notes', pinned: true, active: true },
       { id: 'tasks', label: 'Tasks', pinned: false },
     ] })
@@ -58,6 +58,46 @@ describe('More menu rows', () => {
     expect(b.onDismiss.mock.invocationCallOrder[1]).toBeLessThan(b.createPlugin.mock.invocationCallOrder[0]!)
     expect(b.onOpen).not.toHaveBeenCalled()
     expect(b.onPinnedChange).not.toHaveBeenCalled()
+  })
+
+  it('lists every sidebar panel, marks the active row, and pins through its own control', () => {
+    const b = content({ entries: [
+      { id: 'notes', label: 'Notes', pinned: true, active: true },
+      { id: 'tasks', label: 'Tasks', pinned: false },
+    ] })
+    expect(b.view.getAllByRole('menuitem').map(row => row.textContent))
+      .toEqual(['Notes', 'Tasks', 'Browse other plugins', 'Create your plugin'])
+    expect(b.view.getAllByRole('separator')).toHaveLength(1)
+    const currentRow = b.view.getByRole('menuitem', { name: 'Notes' })
+    expect(currentRow.getAttribute('aria-current')).toBe('page')
+    expect(currentRow.querySelector('svg')?.previousElementSibling?.textContent).toBe('Notes')
+    expect(b.view.getByRole('menuitem', { name: 'Tasks' }).hasAttribute('aria-current')).toBe(false)
+
+    const unpin = b.view.getByRole('button', { name: 'Unpin Notes from the sidebar' })
+    expect(unpin.getAttribute('aria-pressed')).toBe('true')
+    const pin = b.view.getByRole('button', { name: 'Pin Tasks to the sidebar' })
+    expect(pin.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(pin)
+    expect(b.onPinnedChange).toHaveBeenCalledExactlyOnceWith('tasks', true)
+    expect(b.onOpen).not.toHaveBeenCalled()
+    expect(b.onDismiss).not.toHaveBeenCalled()
+
+    fireEvent.click(currentRow)
+    expect(b.onDismiss.mock.invocationCallOrder[0]).toBeLessThan(b.onOpen.mock.invocationCallOrder[0]!)
+    expect(b.onOpen).toHaveBeenCalledExactlyOnceWith('notes')
+    fireEvent.click(b.view.getByRole('menuitem', { name: 'Browse other plugins' }))
+    expect(b.browsePlugins).toHaveBeenCalledExactlyOnceWith()
+    expect(b.createPlugin).not.toHaveBeenCalled()
+  })
+
+  it('names the pin control after its panel in every locale', () => {
+    const b = content({ t: makeTranslate(zh), entries: [{ id: 'notes', label: '笔记', pinned: false }] })
+    const pin = b.view.getByRole('button', { name: '将「笔记」固定到侧边栏' })
+    expect(pin.getAttribute('aria-pressed')).toBe('false')
+    expect(b.view.getByRole('menuitem', { name: '笔记' })).toBeTruthy()
+    fireEvent.click(pin)
+    expect(b.onPinnedChange).toHaveBeenCalledExactlyOnceWith('notes', true)
+    expect(b.onOpen).not.toHaveBeenCalled()
   })
 
   it('opens folded Conversation Views and marks the active View without pin controls', () => {
@@ -131,10 +171,15 @@ async function bench(language: 'en' | 'zh' = 'en', { analytics = true }: { analy
 describe('More menu registrations', () => {
   it('registers one row set per region and removes all of them when the plugin unloads', async () => {
     const b = await bench()
+    const rows: Record<Seats, readonly string[]> = {
+      'sidebar.panellist.actions': ['Notes', 'Browse other plugins', 'Create your plugin'],
+      'conversation.session.header.views.actions': ['Browse other plugins', 'Create your plugin'],
+      'sidebar.right.tab.guide.actions': ['Browse other plugins', 'Create your plugin'],
+    }
     for (const seat of SEATS) {
       expect(b.runtime.slots.entries(seat).map(entry => entry.options.id)).toEqual(['entry-customization'])
       expect(within(b.view.getByRole('menu', { name: seat })).getAllByRole('menuitem').map(row => row.textContent))
-        .toEqual(['Browse other plugins', 'Create your plugin'])
+        .toEqual(rows[seat])
     }
     const sidebar = within(b.view.getByRole('menu', { name: 'sidebar.panellist.actions' }))
     fireEvent.click(sidebar.getByRole('menuitem', { name: 'Browse other plugins' }))

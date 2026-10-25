@@ -2,8 +2,6 @@
 - button "Collapse sidebar"
 - button "New session": New Session
 - navigation "Global panels":
-  - button "Plugins"
-  - button "Automation tasks"
   - button "More"
 - text: Workspaces
 - button "Search sessions"

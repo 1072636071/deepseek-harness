@@ -1,3 +1,8 @@
 .entryName { display: flex; align-items: center; gap: 8px; }
 .entryTitle { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
 .activeMark { flex: none; margin-left: auto; }
+.panelRow { display: flex; align-items: center; gap: 2px; }
+.panelRow > :first-child { flex: 1; min-width: 0; }
+.pinToggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: none; border-radius: var(--dsw-radius-md); background: transparent; color: var(--dsw-alias-menu-icon); cursor: pointer; }
+.pinToggle:hover, .pinToggle:focus-visible { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); outline: none; }
+.pinToggle[aria-pressed='true'] { color: var(--dsw-alias-label-primary); }

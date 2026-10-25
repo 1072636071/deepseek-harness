@@ -337,3 +337,14 @@ export async function openSettings(page: Page, locale: 'en' | 'zh'): Promise<voi
   await page.getByRole('button', { name: locale === 'zh' ? '账号菜单' : 'Account menu', exact: true }).click()
   await page.getByRole('menuitem', { name: locale === 'zh' ? '设置' : 'Settings', exact: true }).click()
 }
+
+/** Open one global panel through the sidebar's More menu, which lists every panel row.
+ * @param page - browser page with the mounted sidebar.
+ * @param locale - current UI language.
+ * @param panel - localized panel label, for example `Plugins`.
+ */
+export async function openPanelFromMore(page: Page, locale: 'en' | 'zh', panel: string): Promise<void> {
+  const navigation = page.getByRole('navigation', { name: locale === 'zh' ? '全局面板' : 'Global panels' })
+  await navigation.getByRole('button', { name: locale === 'zh' ? '更多' : 'More', exact: true }).click()
+  await page.getByRole('menu').getByRole('menuitem', { name: panel, exact: true }).click()
+}

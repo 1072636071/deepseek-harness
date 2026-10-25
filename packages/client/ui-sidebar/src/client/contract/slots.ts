@@ -34,7 +34,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the sidebar owns the button and resolves its label from list metadata.
      */
     'sidebar.panellist': { kind: 'list'; scope: 'root'; owner: SidebarPanelIconOwnerProps }
-    /** Rows of the panel list's More menu; the sidebar shows More only while this list has registrations. */
+    /**
+     * Rows of the panel list's More menu, which lists every global panel. The
+     * sidebar shows More only while this list has registrations, and every
+     * unpinned panel is reachable only through it.
+     */
     'sidebar.panellist.actions': { kind: 'list'; scope: 'root'; owner: SidebarPanelActionsOwnerProps }
     /**
      * The workspace/session browsing region: section header, search, the
@@ -87,13 +91,13 @@ export interface SidebarPanelMetadata {
   label: string
 }
 
-/** One customizable panel launcher listed in the More menu. */
+/** One global panel launcher listed in the More menu. */
 export interface SidebarPanelActionEntry {
   /** Panel id. */
   readonly id: string
   /** Resolved panel label. */
   readonly label: string
-  /** False while the launcher is unpinned from the sidebar. */
+  /** Whether the launcher has its own row in the sidebar navigation; every panel starts unpinned. */
   readonly pinned: boolean
   /** Whether this panel is selected, independently of its pin state. */
   readonly active?: boolean
@@ -101,7 +105,7 @@ export interface SidebarPanelActionEntry {
 
 /** Owner share of the panel list's More menu rows. */
 export interface SidebarPanelActionsOwnerProps {
-  /** Customizable panels in registration order; Plugins is never listed. */
+  /** Every global panel in registration order, pinned or not; the row's pin toggle reads `pinned`. */
   readonly entries: readonly SidebarPanelActionEntry[]
   /**
    * Open a panel without changing its pin state.
@@ -109,9 +113,9 @@ export interface SidebarPanelActionsOwnerProps {
    */
   readonly onOpen: (id: string) => void
   /**
-   * Show (true) or unpin (false) a panel launcher.
+   * Pin (true) or unpin (false) a panel launcher; the row stays listed either way.
    * @param id - Listed panel id.
-   * @param pinned - Whether the launcher shows in the sidebar.
+   * @param pinned - Whether the launcher shows in the sidebar navigation.
    */
   readonly onPinnedChange: (id: string, pinned: boolean) => void
   /** Close the More menu. */
@@ -160,9 +164,9 @@ export type SidebarRootInjected = {
   /** Select the global panel addressed by a sidebar row. */
   selectPanel: (id: MainPanelId) => void
   /**
-   * Show or unpin one panel launcher; Plugins is ignored.
+   * Pin (true) or unpin (false) one panel launcher; every panel starts unpinned.
    * @param id - Panel id.
-   * @param pinned - Whether the launcher shows in the sidebar.
+   * @param pinned - Whether the launcher shows in the sidebar navigation.
    */
   setPinned: (id: string, pinned: boolean) => void
   /** Record activation of an official navigation control without changing navigation. */
@@ -171,7 +175,7 @@ export type SidebarRootInjected = {
   hooks: {
     panels: ObservableSnapshot<readonly SidebarPanelMetadata[]>
     shortcuts: ObservableSnapshot<readonly ShortcutCatalogEntry[]>
-    /** Ids of unpinned panel launchers held in memory until plugin reload. */
+    /** Ids of pinned panel launchers, in pin order; empty at start and held in memory until plugin reload. */
     entryPins: ObservableSnapshot<readonly string[]>
     /** Whether `sidebar.panellist.actions` has registrations. */
     entryActions: ObservableSnapshot<boolean>

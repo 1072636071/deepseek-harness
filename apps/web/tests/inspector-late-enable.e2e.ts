@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium, type Browser } from 'playwright'
 import { expect, it, onTestFailed, onTestFinished } from 'vitest'
 import { launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
-import { PLUGIN_TOGGLE_SETTLE_MS, saveFailureShot } from './support.ts'
+import { openPanelFromMore, PLUGIN_TOGGLE_SETTLE_MS, saveFailureShot } from './support.ts'
 
 const bundle = fileURLToPath(new URL('../../../packages/experimental/inspector-profile', import.meta.url))
 const BOOTSTRAP_PATH = '/api/experimental-inspector/bootstrap'
@@ -33,7 +33,7 @@ it('opens bottom DevTools after the Developer Tools bundle is enabled on an alre
   await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
   await page.evaluate(() => { Reflect.set(window, '__inspectorLateEnableMarker', 'same-document') })
 
-  await page.getByRole('navigation', { name: 'Global panels' }).getByRole('button', { name: 'Plugins', exact: true }).click()
+  await openPanelFromMore(page, 'en', 'Plugins')
   const plugins = page.locator('[data-plugin-panel]')
   const toggle = plugins.getByRole('switch', { name: 'Enable Developer Tools', exact: true })
   await toggle.waitFor()

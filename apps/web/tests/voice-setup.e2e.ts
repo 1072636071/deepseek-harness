@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { chromium, type Browser } from 'playwright'
 import { expect, it, onTestFinished } from 'vitest'
 import { captureStableAria, compareOrRefreshGolden, launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold } from './scaffold.ts'
-import { newEnglishPage } from './support.ts'
+import { openPanelFromMore, newEnglishPage } from './support.ts'
 
 const bundle = fileURLToPath(new URL('../../../packages/experimental/voice-input-bundle', import.meta.url))
 const expected = fileURLToPath(new URL('./expected/voice-setup.expected.md', import.meta.url))
@@ -19,7 +19,7 @@ it('guides a newly enabled voice plugin to installation and lets the user postpo
   resources.browser = browser
   const page = await newEnglishPage(browser), tripwire = watchConsole(page)
   await page.goto(scaffold.authenticatedUrl)
-  await page.getByRole('button', { name: 'Plugins', exact: true }).click()
+  await openPanelFromMore(page, 'en', 'Plugins')
   const toggle = page.getByRole('switch', { name: 'Enable Voice input', exact: true })
   await toggle.waitFor()
   expect(await toggle.getAttribute('aria-checked')).toBe('false')

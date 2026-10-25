@@ -25,32 +25,36 @@ describe('default navigation entry customization', () => {
     try { await browser?.close() } finally { await scaffold?.close() }
   })
 
-  it('keeps navigation outside More and offers only browsing and creation after reload', async () => {
+  it('keeps only More in the navigation and pins panel rows back through its menu', async () => {
     onTestFailed(() => saveFailureShot(page, 'entry-customization'))
     const nav = page.getByRole('navigation', { name: 'Global panels' })
-    const tasks = nav.getByRole('button', { name: 'Automation tasks', exact: true })
     const more = nav.getByRole('button', { name: 'More', exact: true })
-    await tasks.waitFor()
-    await tasks.click()
-    await page.getByRole('heading', { name: 'Automation tasks', exact: true }).waitFor()
     for (const reload of [false, true]) {
       if (reload) {
+        // Pin choices live in memory, so a reload returns every panel row to the menu.
         await page.reload({ waitUntil: 'load' })
-        await tasks.click()
-        await page.getByRole('heading', { name: 'Automation tasks', exact: true }).waitFor()
       }
-      await tasks.waitFor()
+      await more.waitFor()
+      expect(await nav.getByRole('button').count()).toBe(1)
       await more.click()
       const menu = page.getByRole('menu')
-      await menu.getByRole('menuitem', { name: 'Browse other plugins', exact: true }).waitFor()
-      expect(await menu.getByRole('menuitem').allTextContents()).toEqual(['Browse other plugins', 'Create your plugin'])
-      expect(await menu.getByRole('separator').count()).toBe(0)
+      const tasks = menu.getByRole('menuitem', { name: 'Automation tasks', exact: true })
+      await tasks.waitFor()
+      expect(await menu.getByRole('menuitem').allTextContents())
+        .toEqual(['Plugins', 'Automation tasks', 'Browse other plugins', 'Create your plugin'])
+      expect(await menu.getByRole('separator').count()).toBe(1)
+      // The pin control is its own button: it toggles the row without opening the panel.
+      await menu.getByRole('button', { name: 'Pin Plugins to the sidebar', exact: true }).click()
+      expect(await menu.getByRole('button', { name: 'Unpin Plugins from the sidebar', exact: true }).getAttribute('aria-pressed')).toBe('true')
+      expect(await nav.getByRole('button', { name: 'Plugins', exact: true }).count()).toBe(1)
+      await tasks.click()
+      await page.getByRole('heading', { name: 'Automation tasks', exact: true }).waitFor()
+      await more.click()
+      await tasks.waitFor()
       expect(await tasks.getAttribute('aria-current')).toBe('page')
       await menu.getByRole('menuitem', { name: 'Browse other plugins', exact: true }).click()
       await menu.waitFor({ state: 'detached' })
-      expect(await nav.getByRole('button', { name: 'Plugins', exact: true }).getAttribute('aria-current')).toBe('page')
-      await tasks.click()
-      await page.getByRole('heading', { name: 'Automation tasks', exact: true }).waitFor()
+      await page.getByRole('heading', { name: 'Plugins', exact: true }).waitFor()
     }
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])

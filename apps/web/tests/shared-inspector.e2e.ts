@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { chromium, type Browser } from 'playwright'
 import { expect, it, onTestFinished } from 'vitest'
 import { compareOrRefreshGolden, launchWebScaffold, seedSession, selectedSessionFixture, watchConsole, webSnapshotMode, type WebScaffold } from './scaffold.ts'
+import { openPanelFromMore } from './support.ts'
 
 const bundle = fileURLToPath(new URL('../../../packages/experimental/inspector-profile', import.meta.url))
 const fixture = fileURLToPath(new URL('../../../snapshots/web/fresh-round-trip/session.v4.jsonl', import.meta.url))
@@ -330,7 +331,7 @@ it('opens bottom DevTools and retains its document and selected panel across Ses
   await page.keyboard.press('ControlOrMeta+Shift+Period')
   await iframe.waitFor({ state: 'visible' })
   expect(await unchanged()).toEqual(identity)
-  await page.getByRole('navigation', { name: 'Global panels' }).getByRole('button', { name: 'Plugins', exact: true }).click()
+  await openPanelFromMore(page, 'en', 'Plugins')
   await page.locator('[data-plugin-panel]').waitFor()
   expect(await iframe.isVisible()).toBe(true)
   expect(await unchanged()).toEqual(identity)

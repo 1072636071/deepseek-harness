@@ -26,7 +26,6 @@ import type { InjectFace, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/ds
 import type {
   SidebarPanelActionsOwnerProps, SidebarPanelMetadata, SidebarRootComponentProps, SidebarRootInjected, SidebarSectionOwnerProps,
 } from './contract/slots.ts'
-import { FIXED_PANEL_ID } from './panel-pins.ts'
 import css from './SidebarRoot.module.css'
 
 /** Wide-content unmount delay; matches the 150ms wide-content fade-out. */
@@ -144,9 +143,11 @@ export function SidebarRoot({
   renderSlot,
 }: SidebarRootComponentProps) {
   const panels = usePanels(snapshot => snapshot)
-  const unpinned = useEntryPins(ids => ids)
+  const pinned = useEntryPins(ids => ids)
   const activePanelId = usePanelInfo(info => info.activePanelId)
   const hasEntryActions = useEntryActions(registered => registered)
+  // Panels join the navigation only once pinned; the rest stay in the More menu.
+  const pinnedPanels = panels.filter(({ id }) => pinned.includes(id))
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
   const toggleLabel = collapsed ? t('toggle.open') : t('toggle.collapse')
@@ -330,9 +331,9 @@ export function SidebarRoot({
         </button>
       </Tooltip>
 
-      {panels.length > 0 && (
+      {panels.length > 0 && (pinnedPanels.length > 0 || hasEntryActions) && (
         <nav className={css.panelList} aria-label={t('panels.label')}>
-          {panels.filter(({ id }) => id === FIXED_PANEL_ID || !unpinned.includes(id)).map(({ id, label }) => (
+          {pinnedPanels.map(({ id, label }) => (
             <PanelRow
               key={id}
               id={id}
@@ -348,8 +349,9 @@ export function SidebarRoot({
             <PanelMoreMenu
               wide={wide}
               label={t('panels.more')}
-              entries={panels.filter(({ id }) => id !== FIXED_PANEL_ID)
-                .map(({ id, label }) => ({ id, label, pinned: !unpinned.includes(id), active: id === activePanelId }))}
+              entries={panels.map(({ id, label }) => ({
+                id, label, pinned: pinned.includes(id), active: id === activePanelId,
+              }))}
               onOpen={(id) => {
                 const entry = officialEntry(id)
                 if (entry !== undefined) trackEntryClick({ menu_name: entry, position: 'sidebar_more' })

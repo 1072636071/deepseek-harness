@@ -22,7 +22,7 @@ import {
   compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, seedSession, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { openPanelFromMore, connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/plan-review', import.meta.url))
 const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
@@ -221,7 +221,7 @@ describe('web e2e: plan review takeover round trip', () => {
     // review arrives while neither is mounted; returning mounts both in one
     // commit, and the review's automatic open runs before the Sidebar's own
     // effects. A crash there retires the opener for the rest of the page.
-    await page.getByRole('button', { name: 'Plugins', exact: true }).click()
+    await openPanelFromMore(page, 'en', 'Plugins')
     await expect.poll(() => page.locator('[data-composer-input]').count()).toBe(0)
     const crashes: string[] = []
     const onConsole = (message: ConsoleMessage): void => {
@@ -301,7 +301,7 @@ describe.skipIf(MODE === 'record')('web e2e: pending plan review across Sidebar 
   }
 
   async function showPlugins(): Promise<void> {
-    await page.getByRole('button', { name: 'Plugins', exact: true }).click()
+    await openPanelFromMore(page, 'en', 'Plugins')
     await expect.poll(() => page.locator('[data-composer-input]').count(), { timeout: 10_000 }).toBe(0)
   }
 

@@ -28,9 +28,9 @@ Browse plugins and prepare a reviewable Creator draft from the More menus of the
 
 The `@deepseek-ai/dsh-web-app` bundle loads this package by default; it needs no Plugins switch or profile selection. A region shows its More button only while its actions slot has a registration, so unloading this package removes all three buttons.
 
-Open **More** beneath the left navigation entries, **More conversation views** after the Conversation View tabs, or **More tools** after the right-sidebar guide cards. Left-sidebar and guide menus offer only **Browse other plugins** and **Create your plugin**. The Conversation menu also lists folded Views before those actions and marks the active View. None of these menus provide pin controls or sorting.
+Open **More** beneath the left navigation entries, **More conversation views** after the Conversation View tabs, or **More tools** after the right-sidebar guide cards. The left-sidebar menu lists every global panel first: each row opens that panel, marks the active panel, and carries a pin toggle whose accessible name names that panel, so pinning moves the panel's own row into the navigation. The guide menu offers only **Browse other plugins** and **Create your plugin**; the Conversation menu lists folded Views before those actions and marks the active View. Neither of those menus provides pin controls or sorting.
 
-**Browse other plugins** opens the Plugins main list without opening an installation dialog. **Create your plugin** opens a new or reusable blank Session with the Creator preset and adds a short localized request for a plugin in that region to its draft: an empty draft takes the request as its text, and an existing draft keeps its text, references, and attachments with the request appended as a new paragraph. It never sends a message. Review and send the draft yourself. Both actions remain available regardless of the region’s entries; a separator appears above browsing only when folded Views precede it.
+**Browse other plugins** opens the Plugins main list without opening an installation dialog. **Create your plugin** opens a new or reusable blank Session with the Creator preset and adds a short localized request for a plugin in that region to its draft: an empty draft takes the request as its text, and an existing draft keeps its text, references, and attachments with the request appended as a new paragraph. It never sends a message. Review and send the draft yourself. Both actions remain available regardless of the region’s entries; a separator appears above browsing only when panel rows or folded Views precede it.
 
 On Desktop, **Browse other plugins** and **Create your plugin** report `more_menu_item_click` before they act, with `action=browse_plugins` or `action=create_plugin` and the menu's `region`: `sidebar` for **More**, `conversation` for **More conversation views**, and `rightbar` for **More tools**. The menus report no exposure events. Without the analytics service, both actions behave the same and report nothing.
 
@@ -42,7 +42,7 @@ On Desktop, **Browse other plugins** and **Create your plugin** report `more_men
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-[`apply`](src/client/index.ts) registers [`EntryMenuContent`](src/client/EntryMenuContent.tsx) under id `entry-customization` into `sidebar.panellist.actions`, `conversation.session.header.views.actions`, and `sidebar.right.tab.guide.actions` through `ctx.slots.inject`, so each registration follows its region's declaration lifetime. The regions render these slots inside their own `Menu`; the rows call `onDismiss` before browsing or creating. Only the Conversation menu consumes its owner’s folded entry list and navigation callback; pin callbacks remain unused.
+[`apply`](src/client/index.ts) registers [`EntryMenuContent`](src/client/EntryMenuContent.tsx) under id `entry-customization` into `sidebar.panellist.actions`, `conversation.session.header.views.actions`, and `sidebar.right.tab.guide.actions` through `ctx.slots.inject`, so each registration follows its region's declaration lifetime. The regions render these slots inside their own `Menu`; the rows call `onDismiss` before browsing, creating, or opening a panel. The sidebar and Conversation menus list their owner’s entries and call `onOpen`; only the sidebar adds the pin toggle that calls `onPinnedChange`, and the right-bar menu reads neither callback.
 
 Each registration's `inject` supplies its region and two callbacks. Each callback first calls `ctx.get('productAnalytics')?.track('more_menu_item_click', { region, action })`. Browsing then calls `pluginNavigation.openList()`. Creation then calls `uiWorkspace.startSession(undefined, { agentPreset: 'cordis', prompt, whenDraftExists: 'append' })` with the region's localized prompt; it does not go through `ui-agent-preset`, so the preset chip plays no introduction. The [`dsh-web-app` bundle patch](../../bundle/web-app/cordis.patch.yml) mounts the browser plugin.
 
@@ -63,7 +63,7 @@ None; the package neither assembles nor sends model requests.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- More menus provide no visibility controls. Region pin callbacks remain available to other registrations and change only in-memory choices; plugin reload restores defaults.
+- The sidebar menu toggles pins but stores nothing itself: its owner keeps the pinned ids in memory, so a plugin reload restores the default of every panel unpinned.
 - Legacy pin values in localStorage are neither read nor written.
 - **Create your plugin** does not check whether the Creator preset exists. Without it, Session creation fails, the Workspace shows its creation-failure notice, and no draft is prepared. Draft preparation also requires a resolvable Workspace; without one, the existing flow reports that a Workspace is required.
 - Conversation owns the estimated tab split; these menus provide no sorting.

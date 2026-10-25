@@ -47,7 +47,7 @@ import {
   buildVfsExampleFiles,
 } from '../../../packages/experimental/webworker-runtime/tests/vfs-example-fixture.ts'
 import { captureStableAria, compareOrRefreshGolden, webSnapshotMode } from './scaffold.ts'
-import { expandOwningTurnProcess, newEnglishPage, REPO_ROOT, saveFailureShot } from './support.ts'
+import { openPanelFromMore, expandOwningTurnProcess, newEnglishPage, REPO_ROOT, saveFailureShot } from './support.ts'
 
 const DIST_ROOT = fileURLToPath(new URL('../dist', import.meta.url))
 
@@ -605,7 +605,7 @@ async function requestLazyChunk(page: Page, site: Site, manifest: ImageManifest)
  * @param page - Booted preview page.
  */
 async function toggleOptionalBundles(page: Page): Promise<void> {
-  await page.getByRole('navigation', { name: 'Global panels' }).getByRole('button', { name: 'Plugins', exact: true }).click()
+  await openPanelFromMore(page, 'en', 'Plugins')
   const panel = page.locator('[data-plugin-panel]')
   const cards = panel.locator('[data-plugin-group="extensions"] [data-plugin-package]')
   await cards.first().waitFor({ timeout: 30_000 })
