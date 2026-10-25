@@ -7,7 +7,7 @@
 | 项 | 值 |
 | --- | --- |
 | kb_id | `58dee114-72b0-4f08-98b7-e9c12c96516b` |
-| 库名 | `deepseek-harness` |
+| 库名 | `dsh-agent-studio 项目知识库`（逻辑名 `deepseek-harness`；WeKnora 侧真名如此，**调工具一律传 kb_id，库名匹配会失败**） |
 | UI | <http://123.206.125.149:8127/platform/knowledge-bases/58dee114-72b0-4f08-98b7-e9c12c96516b> |
 | REST base | `http://123.206.125.149:8127/api/v1`，请求头 `X-API-Key: <key>` |
 | 凭据腿 | 坚果云 `项目机密\Secret\WeKnora-知识库-API密钥.md` |

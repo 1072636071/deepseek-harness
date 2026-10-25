@@ -191,7 +191,7 @@ Docs accompany every code change: update affected README and JSDoc contracts tog
 
 本项目的可复用结论统一沉淀到团队知识库：**入库前查重、入库后以库为准**。
 
-- 库：`deepseek-harness`，kb_id `58dee114-72b0-4f08-98b7-e9c12c96516b`
+- 库：`dsh-agent-studio 项目知识库`（逻辑名 deepseek-harness），kb_id `58dee114-72b0-4f08-98b7-e9c12c96516b`；调工具传 kb_id，不传库名
 - UI：<http://123.206.125.149:8127>/platform/knowledge-bases/58dee114-72b0-4f08-98b7-e9c12c96516b
 - REST base：`http://123.206.125.149:8127/api/v1`（请求头 `X-API-Key`）
 - 凭据腿：坚果云 `项目机密\Secret\WeKnora-知识库-API密钥.md`——**key 只现取现用，不进仓库 / 文档 / 工单 / 回显**
