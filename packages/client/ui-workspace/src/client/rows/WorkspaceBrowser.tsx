@@ -33,8 +33,8 @@ import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
 import type { ArchivedFilter, FolderHeaderNode, GroupNode, SessionNode, SessionOrderBy, SessionRowState } from '../tree.ts'
 import {
-  deriveFlat, deriveGroups, deriveSearchResults, layoutFolderSections, orderByRecency, owningGroupKey,
-  owningParentFolder, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, UNGROUPED_KEY,
+  deriveFlat, deriveGroups, deriveSearchResults, folderRowStatus, layoutFolderSections, orderByRecency, owningGroupKey,
+  owningParentFolder, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, treeRowKeys, UNGROUPED_KEY, watermarkRows,
 } from '../tree.ts'
 import { FolderRowItem, ProjectRowItem, SearchResultItem, SessionNodeItem } from './Rows.tsx'
 import { AnimatedRows } from './AnimatedRows.tsx'
@@ -55,20 +55,6 @@ const SEARCH_QUERY_MAX_CODE_UNITS = 500
 const SESSION_WATERMARK_BASE = 5
 /** Highest watermark that attention-bearing Sessions raise automatically; Show more and search reveals may exceed it. */
 const SESSION_WATERMARK_AUTO_MAX = 50
-
-/** Show the blank row plus the first `watermark` non-blank rows, in list order. */
-function watermarkRows(sessions: readonly SessionNode[], watermark: number): {
-  rows: readonly SessionNode[]
-  hiddenCount: number
-} {
-  let count = 0
-  const rows = sessions.filter((session) => {
-    if (session.blank) return true
-    count += 1
-    return count <= watermark
-  })
-  return { rows, hiddenCount: sessions.length - rows.length }
-}
 
 /**
  * Smallest watermark that covers every non-blank row within the automatic maximum that is running, has a running
@@ -243,6 +229,49 @@ function sessionDragOrder(
   return pinCurrentBlank(next, rows.find(row => row.blank)?.id)
 }
 
+/** Account ids in rendered row order: hidden members and foreign ids drop out. */
+function visibleProjection(order: readonly SessionId[], rows: readonly SessionNode[]): SessionId[] {
+  const rendered = new Set(rows.map(row => row.id))
+  return order.filter(id => rendered.has(id))
+}
+
+/**
+ * Resolve a session drop into the side its marker must show and the order to commit.
+ *
+ * {@link sessionDragOrder} refuses a slot that equals the source's own slot, which is
+ * what the pointer half resolves to for either adjacent gesture (down onto the next
+ * row's upper half, up onto the previous row's lower half). Mirroring the side makes
+ * those gestures move the row, and the reported side is re-derived from the final order
+ * so a marker never promises a position the order cannot take (a blank row stays pinned
+ * to the front whichever side the pointer crossed).
+ *
+ * @param order Complete account order, hidden members included.
+ * @param rows Rendered rows of that account, in display order.
+ * @param drag In-flight drag state.
+ * @param over Row the pointer is over and the side it implies.
+ * @returns The side to mark plus the committed order, or `undefined` when no side moves this row.
+ */
+function resolveSessionDrop(
+  order: readonly SessionId[],
+  rows: readonly SessionNode[],
+  drag: DragState,
+  over: NonNullable<DragState['over']>,
+): { half: 'before' | 'after'; nextOrder: SessionId[] } | undefined {
+  const sides: Array<'before' | 'after'> = over.half === 'before' ? ['before', 'after'] : ['after', 'before']
+  const before = visibleProjection(order, rows)
+  for (const half of sides) {
+    const nextOrder = sessionDragOrder(order, rows, drag, { id: over.id, half })
+    if (nextOrder === undefined) continue
+    const after = visibleProjection(nextOrder, rows)
+    /* v8 ignore next -- mirrored candidate that cannot move this row reports no move at all. */
+    if (after.length === before.length && after.every((id, index) => id === before[index])) continue
+    const index = after.indexOf(drag.sessionId)
+    const resolved: 'before' | 'after' = after.indexOf(over.id) < index ? 'after' : 'before'
+    return { half: resolved, nextOrder }
+  }
+  return
+}
+
 /** In-flight Workspace-row drag: source identity plus the current marker. */
 interface WorkspaceDragState {
   workspaceId: WorkspaceId
@@ -253,6 +282,59 @@ interface WorkspaceDragState {
 function workspaceGroupHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' | 'after' {
   const rect = e.currentTarget.getBoundingClientRect()
   return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+}
+
+/** One resolved Workspace-row drop: the side its marker shows and the insert anchor. */
+interface WorkspaceDropResolution {
+  half: 'before' | 'after'
+  /** Workspace the dragged row is inserted before; `undefined` appends past the last sibling. */
+  anchor: WorkspaceId | undefined
+}
+
+/**
+ * Resolve a Workspace-row drop into the side its marker shows and the insert anchor.
+ *
+ * `insertWorkspaceBefore` expresses a drop as "put the row before this anchor", so the
+ * pointer half alone is a no-op for both adjacent gestures: dropping on the next row's
+ * upper half anchors on that next row (already the row's own neighbour slot), and
+ * dropping on the previous row's lower half anchors on the dragged row itself. Mirroring
+ * the side makes those gestures move the row, and the reported side is re-derived from
+ * the order the call produces so a marker never promises a position nothing takes.
+ * @param workspaces - Workspaces in Host order.
+ * @param parents - nearest rendered parent per Workspace (empty unless nesting is on).
+ * @param drag - in-flight Workspace drag.
+ * @param over - row the pointer is over and the side it implies.
+ * @returns the side to mark plus the anchor to send, or `undefined` when no drop moves this row.
+ */
+function resolveWorkspaceDrop(
+  workspaces: readonly WorkspaceView[],
+  parents: ReadonlyMap<string, WorkspaceId | undefined>,
+  drag: WorkspaceDragState,
+  over: NonNullable<WorkspaceDragState['over']>,
+): WorkspaceDropResolution | undefined {
+  const siblings = workspaces.filter(workspace => parents.get(workspace.workspaceId) === parents.get(drag.workspaceId))
+  const sourceIndex = siblings.findIndex(workspace => workspace.workspaceId === drag.workspaceId)
+  const rowIndex = siblings.findIndex(workspace => workspace.workspaceId === over.id)
+  /* v8 ignore next -- a sibling miss means the Workspace list changed mid-drag, which the hover gate cannot express. */
+  if (sourceIndex === -1 || rowIndex === -1) return
+  const sides: Array<'before' | 'after'> = over.half === 'before' ? ['before', 'after'] : ['after', 'before']
+  for (const half of sides) {
+    const anchor = half === 'before' ? over.id : siblings[rowIndex + 1]?.workspaceId
+    if (anchor === drag.workspaceId) continue
+    const anchorIndex = anchor === undefined ? siblings.length : siblings.findIndex(workspace => workspace.workspaceId === anchor)
+    /* v8 ignore next -- anchor is either a sibling id or the list end, so a miss cannot occur. */
+    if (anchorIndex === -1) continue
+    if (anchorIndex === sourceIndex || anchorIndex === sourceIndex + 1) continue
+    const without = siblings.filter(workspace => workspace.workspaceId !== drag.workspaceId)
+    const insertAt = anchor === undefined ? without.length : without.findIndex(workspace => workspace.workspaceId === anchor)
+    const next = [...without.slice(0, insertAt), siblings[sourceIndex] as WorkspaceView, ...without.slice(insertAt)]
+    return {
+      half: next.findIndex(workspace => workspace.workspaceId === drag.workspaceId)
+        < next.findIndex(workspace => workspace.workspaceId === over.id) ? 'before' : 'after',
+      anchor,
+    }
+  }
+  return
 }
 
 type SessionTreeProps = Pick<
@@ -358,9 +440,12 @@ function SessionTree({
   const [watermarkMotionKey, setWatermarkMotionKey] = useState(0)
   // Transient drag marker state; the selected mode owns the resulting order.
   const [drag, setDrag] = useState<DragState | null>(null)
-  const sessionDropCommitted = useRef(false)
+  // A settled drag never re-applies its outcome. A session drag settles only
+  // once its order write lands, so a drop that bails leaves the dragend fallback
+  // free to commit; a Workspace drag also settles when its drop is cancelled.
+  const sessionDragSettled = useRef(false)
   const [workspaceDrag, setWorkspaceDrag] = useState<WorkspaceDragState | null>(null)
-  const workspaceDropCommitted = useRef(false)
+  const workspaceDragSettled = useRef(false)
   const nativeDragActive = drag !== null || workspaceDrag !== null
   useNativeDragAcceptance(nativeDragActive)
   const currentGroup = current === undefined || !workspaceReady
@@ -435,39 +520,30 @@ function SessionTree({
   }
   const now = Date.now()
   const commitSessionDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
-    if (sessionDropCommitted.current) return
-    sessionDropCommitted.current = true
-    setDrag(null)
+    if (sessionDragSettled.current) return
     const group = groups.find(candidate => candidate.key === activeDrag.accountKey)
-    if (group === undefined) return
-    if (over.id === activeDrag.sessionId) return
+    if (group === undefined || over.id === activeDrag.sessionId) return
     const accountSessionIds = activeDrag.accountKey === UNGROUPED_KEY
       ? ungroupedSessionIds
       : workspaces.find(workspace => workspace.workspaceId === activeDrag.accountKey)?.sessionIds
     if (accountSessionIds === undefined) return
     const renderedSessions = watermarkRows(group.sessions, sessionWatermarks[group.key] ?? SESSION_WATERMARK_BASE).rows
-    const nextOrder = sessionDragOrder(accountSessionIds, renderedSessions, activeDrag, over)
-    if (nextOrder !== undefined) setSessionOrder(activeDrag.accountKey, nextOrder)
+    const resolved = resolveSessionDrop(accountSessionIds, renderedSessions, activeDrag, over)
+    if (resolved === undefined) return
+    sessionDragSettled.current = true
+    setDrag(null)
+    setSessionOrder(activeDrag.accountKey, resolved.nextOrder)
   }
   const commitWorkspaceDrag = (
     activeDrag: WorkspaceDragState,
     over: NonNullable<WorkspaceDragState['over']>,
   ): void => {
-    if (workspaceDropCommitted.current) return
-    workspaceDropCommitted.current = true
+    if (workspaceDragSettled.current) return
+    const resolved = resolveWorkspaceDrop(workspaces, parents, activeDrag, over)
+    if (resolved === undefined) return
+    workspaceDragSettled.current = true
     setWorkspaceDrag(null)
-    const owner = parents.get(activeDrag.workspaceId)
-    const siblings = workspaces.filter(workspace => parents.get(workspace.workspaceId) === owner)
-    const rowIndex = siblings.findIndex(workspace => workspace.workspaceId === over.id)
-    if (rowIndex === -1) return
-    const anchor = over.half === 'before' ? over.id : siblings[rowIndex + 1]?.workspaceId
-    if (anchor === activeDrag.workspaceId) return
-    const sourceIndex = siblings.findIndex(workspace => workspace.workspaceId === activeDrag.workspaceId)
-    const anchorIndex = anchor === undefined
-      ? siblings.length
-      : siblings.findIndex(workspace => workspace.workspaceId === anchor)
-    if (sourceIndex !== -1 && (anchorIndex === sourceIndex || anchorIndex === sourceIndex + 1)) return
-    insertWorkspaceBefore(activeDrag.workspaceId, anchor).catch((reason: unknown) => {
+    insertWorkspaceBefore(activeDrag.workspaceId, resolved.anchor).catch((reason: unknown) => {
       console.warn('workspace reorder rejected:', reason)
     })
   }
@@ -502,11 +578,24 @@ function SessionTree({
     return (workspaceId: string | undefined): string | undefined =>
       workspaceId === undefined ? undefined : owner.get(workspaceId)
   }, [folders])
+  // Marker and commit share one resolution, so the line sits where the row lands.
+  const workspaceDropResolution = workspaceDrag === null || workspaceDrag.over === null
+    ? undefined
+    : resolveWorkspaceDrop(workspaces, parents, workspaceDrag, workspaceDrag.over)
   const workspaceDropAtListStart = rootGroups[0]?.workspaceId !== undefined
     && workspaceDrag?.over?.id === rootGroups[0].workspaceId
-    && workspaceDrag.over.half === 'before'
+    && workspaceDropResolution?.half === 'before'
 
-  const rowKeys: string[] = groups.length === 0 ? ['empty'] : []
+  // One key sequence for the animator, derived from the same tree the rows render.
+  const rowKeys = treeRowKeys({
+    groups,
+    childrenByParent,
+    folderMode,
+    sections: folderLayout.sections,
+    loose: folderLayout.loose,
+    watermarkOf: key => sessionWatermarks[key] ?? SESSION_WATERMARK_BASE,
+    baselineOf: key => baselines.get(key) ?? SESSION_WATERMARK_BASE,
+  })
   const renderGroup = (group: GroupNode, depth: number): ReactNode => {
     const workspaceId = group.workspaceId
     const children = childrenByParent.get(group.key) ?? []
@@ -515,26 +604,32 @@ function SessionTree({
     const collapsed = watermarkRows(group.sessions, baselines.get(group.key) ?? SESSION_WATERMARK_BASE)
     const visible = watermarkRows(group.sessions, watermark)
     const sessionsExpanded = visible.hiddenCount === 0
-    rowKeys.push(`workspace:${group.key}`)
     const childRows = group.expanded ? children.map(child => renderGroup(child, depth + 1)) : []
     const sessions = visible.rows
-    for (const node of sessions) rowKeys.push(`session:${node.id}`)
-    if (collapsed.hiddenCount > 0) rowKeys.push(`overflow:${group.key}`)
+    // Marker and commit resolve through the same helper, so the line sits where
+    // the row will land even when the dropped side has to be mirrored.
+    const activeSessionDrag = drag !== null && drag.accountKey === group.key ? drag : null
+    const sessionOver = activeSessionDrag === null ? null : activeSessionDrag.over
+    const accountOrder = workspaceId === undefined
+      ? ungroupedSessionIds
+      : workspaces.find(workspace => workspace.workspaceId === workspaceId)?.sessionIds
+    const sessionDropHalf = activeSessionDrag === null || sessionOver === null || accountOrder === undefined
+      ? null
+      : resolveSessionDrop(accountOrder, sessions, activeSessionDrag, sessionOver)?.half ?? null
     const workspaceMarker = workspaceId !== undefined && workspaceDrag?.over?.id === workspaceId
-      ? workspaceDrag.over.half
+      ? workspaceDropResolution?.half ?? null
       : null
     const workspaceDragProps = workspaceId === undefined ? undefined : {
       start: () => {
-        workspaceDropCommitted.current = false
+        workspaceDragSettled.current = false
         setWorkspaceDrag({ workspaceId, over: null })
       },
       end: () => {
         if (workspaceDrag?.over !== null && workspaceDrag?.over !== undefined) {
           commitWorkspaceDrag(workspaceDrag, workspaceDrag.over)
-        } else {
-          setWorkspaceDrag(null)
         }
-        workspaceDropCommitted.current = false
+        setWorkspaceDrag(null)
+        workspaceDragSettled.current = false
       },
     }
     const hoverWorkspace = workspaceId === undefined || !compatibleDrag
@@ -582,7 +677,9 @@ function SessionTree({
             if (dropWorkspace === undefined && parents.get(group.key) !== undefined) return
             e.stopPropagation()
             if (dropWorkspace === undefined) {
-              workspaceDropCommitted.current = true
+              // A section that cannot take the row cancels this drag; settling here
+              // keeps the dragend fallback from applying the stale marker.
+              workspaceDragSettled.current = true
               setWorkspaceDrag(null)
             } else {
               dropWorkspace(workspaceGroupHalf(e))
@@ -643,11 +740,11 @@ function SessionTree({
             node.blank ? 'after' : half
           const dragProps = {
             start: () => {
-              sessionDropCommitted.current = false
+              sessionDragSettled.current = false
               setDrag({ accountKey: group.key, sessionId: node.id, pinned: node.pinned, over: null })
             },
             active: compatibleTarget,
-            marker: sameGroupDrag && drag.over?.id === node.id ? drag.over.half : null,
+            marker: sameGroupDrag && drag.over?.id === node.id ? sessionDropHalf : null,
             hover: (half: 'before' | 'after') => {
             /* v8 ignore next -- narrowing guard: Rows gates hover on `active`, which is false while the drag state is null. */
               setDrag(d => (d === null ? d : {
@@ -661,8 +758,8 @@ function SessionTree({
             },
             end: () => {
               if (drag?.over !== null && drag?.over !== undefined) commitSessionDrag(drag, drag.over)
-              else setDrag(null)
-              sessionDropCommitted.current = false
+              setDrag(null)
+              sessionDragSettled.current = false
             },
           }
           return (
@@ -715,6 +812,7 @@ function SessionTree({
         <FolderRowItem
           key={`folder:${folder.folderId}`}
           folder={folder}
+          status={folderRowStatus(members.map(group => group.status))}
           containsCurrentDescendant={members.some(group => currentAncestors.has(group.key))}
           onToggle={() => { onFolderToggle(folder.folderId, !folder.expanded) }}
           actions={{
@@ -778,19 +876,26 @@ function FlatList({
     [list, sessionIds, rowState, statuses],
   )
   const [drag, setDrag] = useState<DragState | null>(null)
-  const dropCommitted = useRef(false)
+  // Settles only once the flat order write lands, leaving the dragend fallback
+  // free to commit after a bailed drop.
+  const flatDragSettled = useRef(false)
   useNativeDragAcceptance(drag !== null)
   const currentId = panelActive
     ? undefined
     : Object.values(list.byId).find(session => (session.retainedBy.mainView ?? 0) > 0)?.id
   const commitDrag = (activeDrag: DragState, over: NonNullable<DragState['over']>): void => {
-    if (dropCommitted.current) return
-    dropCommitted.current = true
+    if (flatDragSettled.current) return
+    const resolved = resolveSessionDrop(sessionIds, rows, activeDrag, over)
+    if (resolved === undefined) return
+    flatDragSettled.current = true
     setDrag(null)
-    const nextOrder = sessionDragOrder(sessionIds, rows, activeDrag, over)
-    if (nextOrder !== undefined) setSessionOrder(FLAT_SESSION_ORDER_KEY, nextOrder)
+    setSessionOrder(FLAT_SESSION_ORDER_KEY, resolved.nextOrder)
   }
   const now = Date.now()
+  // Same resolver as the commit, so the flat marker also shows where the row lands.
+  const dropHalf = drag === null || drag.over === null
+    ? null
+    : resolveSessionDrop(sessionIds, rows, drag, drag.over)?.half ?? null
   return (
     <HoverCardGroup className={clsx(css.treeBody, css.wide)}>
       <AnimatedRows
@@ -821,11 +926,11 @@ function FlatList({
                 : undefined}
               drag={{
                 start: () => {
-                  dropCommitted.current = false
+                  flatDragSettled.current = false
                   setDrag({ accountKey: FLAT_SESSION_ORDER_KEY, sessionId: node.id, pinned: node.pinned, over: null })
                 },
                 active,
-                marker: active && drag.over?.id === node.id ? drag.over.half : null,
+                marker: active && drag.over?.id === node.id ? dropHalf : null,
                 hover: (half) => {
                   setDrag(current => current === null ? current : {
                     ...current, over: { id: node.id, half: normalizeHalf(half) },
@@ -836,8 +941,8 @@ function FlatList({
                 },
                 end: () => {
                   if (drag?.over !== null && drag?.over !== undefined) commitDrag(drag, drag.over)
-                  else setDrag(null)
-                  dropCommitted.current = false
+                  setDrag(null)
+                  flatDragSettled.current = false
                 },
               }}
               t={t}

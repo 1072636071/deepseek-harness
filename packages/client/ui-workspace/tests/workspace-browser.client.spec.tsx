@@ -2053,8 +2053,8 @@ describe('WorkspaceBrowser', () => {
       expect.stringContaining('three'), expect.stringContaining('four'),
     ])
 
-    // Dropping the trailing pinned row after the leading one restates the
-    // current block: a no-op that writes nothing.
+    // The trailing pinned row dropped on the leading row's lower half mirrors to
+    // the leading side: the pair swaps instead of restating the block.
     const oneAgain = screen.getByText('one').closest('[role="treeitem"]') as HTMLElement
     const twoAgain = screen.getByText('two').closest('[role="treeitem"]') as HTMLElement
     twoAgain.getBoundingClientRect = () => ({
@@ -2062,7 +2062,7 @@ describe('WorkspaceBrowser', () => {
     })
     fireEvent.dragStart(oneAgain, { dataTransfer: dragData() })
     fireDrag(twoAgain, 'drop', 130)
-    expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['three', 'two', 'one', 'four'])
+    expect(b.store.getSnapshot().sessionOrderByAccount.alpha).toEqual(['three', 'one', 'two', 'four'])
   })
 
   it('keeps pinned and unpinned rows in separate drag domains', () => {
@@ -2588,7 +2588,7 @@ describe('Workspace tree grouping', () => {
     expect(b.props.insertWorkspaceBefore).toHaveBeenCalledExactlyOnceWith(wid('outside'), wid('tail'))
   })
 
-  it('avoids a Host reorder when only descendants separate adjacent siblings', () => {
+  it('reorders when an adjacent sibling near half resolves to the source own slot', () => {
     const outside = { ...workspace('outside', []), path: '/outside' }
     const b = mount({ useWorkspaces: hook(workspaceState([root, child, outside])) })
     section('outside').getBoundingClientRect = () => ({
@@ -2599,7 +2599,9 @@ describe('Workspace tree grouping', () => {
     fireEvent.dragStart(source, { dataTransfer: dragData() })
     fireDrag(section('outside'), 'drop', 10)
     fireEvent.dragEnd(source)
-    expect(b.props.insertWorkspaceBefore).not.toHaveBeenCalled()
+    // The pointer half alone anchors on the next sibling, which is already this
+    // row's slot; the mirrored side moves it past that sibling instead.
+    expect(b.props.insertWorkspaceBefore).toHaveBeenCalledExactlyOnceWith(root.workspaceId, undefined)
   })
 
   it('moves a parent with its descendants while preserving their order', () => {
@@ -2653,11 +2655,14 @@ describe('Workspace tree grouping', () => {
     fireDrag(outside.parentElement as HTMLElement, 'dragOver', 100)
     fireDrag(outside.parentElement as HTMLElement, 'drop', 100)
     fireEvent.dragEnd(alpha)
+    // A different parent keeps the drop unreachable.
     expect(b.props.insertWorkspaceBefore).not.toHaveBeenCalled()
     fireEvent.dragStart(beta, { dataTransfer: dragData() })
     fireDrag(alpha.parentElement as HTMLElement, 'drop', 100)
     fireEvent.dragEnd(beta)
-    expect(b.props.insertWorkspaceBefore).not.toHaveBeenCalled()
+    // Same parent: the mirrored side moves the row before its leading sibling.
+    expect(b.props.insertWorkspaceBefore).toHaveBeenCalledExactlyOnceWith(wid('beta'), wid('alpha'))
+    vi.mocked(b.props.insertWorkspaceBefore).mockClear()
     fireEvent.dragStart(alpha, { dataTransfer: dragData() })
     fireDrag(beta.parentElement as HTMLElement, 'drop', 100)
     fireEvent.dragEnd(alpha)

@@ -427,6 +427,7 @@ function assertNever(value: never): never {
  * holds. Its menu offers rename and delete; moving Workspaces in and out is a
  * Workspace-row action, because a folder header holds no Workspace identity.
  * @param props.folder - folder header facts.
+ * @param props.status - aggregate status over the folder's member Workspace rows.
  * @param props.containsCurrentDescendant - highlight the folder when a nested Workspace holds the selection.
  * @param props.onToggle - expand/collapse the folder.
  * @param props.actions - rename and delete callbacks.
@@ -434,8 +435,9 @@ function assertNever(value: never): never {
  * @param props.t - the browser root's locale seat.
  * @returns the folder row.
  */
-export function FolderRowItem({ folder, containsCurrentDescendant = false, onToggle, actions, drag, t }: {
+export function FolderRowItem({ folder, status, containsCurrentDescendant = false, onToggle, actions, drag, t }: {
   folder: FolderHeaderNode
+  status: WorkspaceRowStatus
   containsCurrentDescendant?: boolean
   onToggle: () => void
   actions: { rename: () => void; delete: () => void }
@@ -450,7 +452,6 @@ export function FolderRowItem({ folder, containsCurrentDescendant = false, onTog
       data-row-key={`folder:${folder.folderId}`}
       role="treeitem"
       aria-expanded={folder.expanded}
-      aria-label={folder.title}
       onClick={onToggle}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
@@ -467,6 +468,9 @@ export function FolderRowItem({ folder, containsCurrentDescendant = false, onTog
       </span>
       <span className={clsx(css.slot, css.chevron)}>
         <IconTriangleRightFillRegular className={clsx(css.arrow, folder.expanded && css.arrowOpen)} />
+      </span>
+      <span className={clsx(css.slot, css.statusSlot)}>
+        <WorkspaceStatusDot status={status} t={t} />
       </span>
       <span className={css.projectText}>
         <span className={css.title}>{folder.title}</span>

@@ -727,12 +727,14 @@ describe('workspace browser rows', () => {
     const end = vi.fn()
     const folder = { folderId: 'f1', title: 'Work', workspaceIds: [wid('a')], expanded: true }
     render(<FolderRowItem
-      folder={folder} onToggle={onToggle} actions={{ rename: onRename, delete: onDelete }}
+      folder={folder} status="running" onToggle={onToggle} actions={{ rename: onRename, delete: onDelete }}
       drag={{ start, end }} t={t}
     />)
     const row = screen.getByRole('treeitem')
     expect(row.getAttribute('aria-expanded')).toBe('true')
-    expect(row.getAttribute('aria-label')).toBe('Work')
+    // Title text and the status label compose the accessible name, as on a Workspace row.
+    expect(row.getAttribute('aria-label')).toBeNull()
+    expect(screen.getByRole('img', { name: '有会话进行中' })).toBeTruthy()
 
     // A folder drag carries its own id as the payload.
     const dataTransfer = { effectAllowed: '', setData: vi.fn() }
@@ -759,11 +761,13 @@ describe('workspace browser rows', () => {
   it('folder row marks a collapsed folder that holds the selection', () => {
     const folder = { folderId: 'f2', title: 'Team', workspaceIds: [wid('b')], expanded: false }
     render(<FolderRowItem
-      folder={folder} containsCurrentDescendant onToggle={vi.fn()}
+      folder={folder} status="unread" containsCurrentDescendant onToggle={vi.fn()}
       actions={{ rename: vi.fn(), delete: vi.fn() }} t={t}
     />)
     const row = screen.getByRole('treeitem')
     expect(row.getAttribute('aria-expanded')).toBe('false')
+    // A collapsed folder still reports its members' most urgent status.
+    expect(screen.getByRole('img', { name: '有已完成的会话待查看' })).toBeTruthy()
     // The active accent marks the ancestor while the folder icon stays collapsed.
     expect(row.querySelector('svg')).toBeTruthy()
   })

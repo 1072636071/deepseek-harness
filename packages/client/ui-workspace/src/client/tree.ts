@@ -544,6 +544,26 @@ export function workspaceRowStatus(
   return present ? 'present' : 'inactive'
 }
 
+/** Row-status precedence, most urgent first; lower rank wins when folding. */
+const ROW_STATUS_RANK: Readonly<Record<WorkspaceRowStatus, number>> = {
+  attention: 0, running: 1, unread: 2, present: 3, inactive: 4,
+}
+
+/**
+ * Fold the member Workspace rows of a folder into its row status, most urgent
+ * first. A folder owns no Sessions, so this reads the member rows' aggregates
+ * only and stays independent of the folder's expansion.
+ * @param memberStatuses - aggregate status of every member Workspace row.
+ * @returns the most urgent member status, or `inactive` when the folder has no member.
+ */
+export function folderRowStatus(memberStatuses: readonly WorkspaceRowStatus[]): WorkspaceRowStatus {
+  let most: WorkspaceRowStatus = 'inactive'
+  for (const status of memberStatuses) {
+    if (ROW_STATUS_RANK[status] < ROW_STATUS_RANK[most]) most = status
+  }
+  return most
+}
+
 /**
  * Select complete flat-list membership, independently of archive visibility.
  * @param list - sessions list snapshot.
@@ -577,18 +597,14 @@ export function visibleSessionIds(
  * Member Workspaces of one folder, in the browser's own Workspace order.
  * @param groups - derived Workspace groups in browser order.
  * @param workspaceIds - folder membership; ids absent from `groups` are ignored.
- * @returns the folder's groups in folder-member order.
+ * @returns the folder's groups in browser order, so a Workspace drag reorders them.
  */
 export function folderMemberGroups(
   groups: readonly GroupNode[],
   workspaceIds: readonly WorkspaceId[],
 ): GroupNode[] {
-  const byWorkspace = new Map(groups.flatMap(group =>
-    group.workspaceId === undefined ? [] : [[group.workspaceId, group] as const]))
-  return workspaceIds.flatMap((id) => {
-    const group = byWorkspace.get(id)
-    return group === undefined ? [] : [group]
-  })
+  const members = new Set<WorkspaceId>(workspaceIds)
+  return groups.filter(group => group.workspaceId !== undefined && members.has(group.workspaceId))
 }
 
 /**
@@ -616,6 +632,81 @@ export function layoutFolderSections(
     })),
     loose: groups.filter(group => group.workspaceId === undefined || !claimed.has(group.workspaceId)),
   }
+}
+
+/**
+ * Show the blank row plus the first `watermark` non-blank rows, in list order.
+ * @param sessions - group rows in display order.
+ * @param watermark - non-blank rows admitted before the tail collapses.
+ * @returns the visible rows and how many rows the watermark hides.
+ */
+export function watermarkRows(sessions: readonly SessionNode[], watermark: number): {
+  rows: readonly SessionNode[]
+  hiddenCount: number
+} {
+  let count = 0
+  const rows = sessions.filter((session) => {
+    if (session.blank) return true
+    count += 1
+    return count <= watermark
+  })
+  return { rows, hiddenCount: sessions.length - rows.length }
+}
+
+/** Everything {@link treeRowKeys} needs from the tree the Session list renders. */
+export interface TreeRowKeysInput {
+  /** Rendered groups in Host order; none yields the empty-state row key. */
+  groups: readonly GroupNode[]
+  /** Groups nested under their nearest rendered ancestor; roots live under the `undefined` key. */
+  childrenByParent: ReadonlyMap<string | undefined, readonly GroupNode[]>
+  /** Whether folder headers own the top level. */
+  folderMode: boolean
+  /** Folder sections in render order; used in folder mode only. */
+  sections: readonly { folder: FolderHeaderNode; groups: readonly GroupNode[] }[]
+  /** Groups no folder claims, after the sections; used in folder mode only. */
+  loose: readonly GroupNode[]
+  /** Raised watermark for one group key. */
+  watermarkOf: (key: string) => number
+  /** Watermark the group's own rows reached before the overflow button appeared. */
+  baselineOf: (key: string) => number
+}
+
+/**
+ * Row keys in the exact order the Session list renders them.
+ *
+ * Keys and rendered rows share these inputs, so the animator can never treat a
+ * rendered row as removed. Folder headers lead their section, a folded folder
+ * contributes only its own key, and each group contributes its header, its
+ * nested Workspaces, its visible Sessions, and its overflow row.
+ * @param input - groups, folder sections, and the two watermark accessors.
+ * @returns one data-row-key per rendered row, in DOM order.
+ */
+export function treeRowKeys(input: TreeRowKeysInput): string[] {
+  if (input.groups.length === 0) return ['empty']
+  const keys: string[] = []
+  const pushGroup = (group: GroupNode): void => {
+    keys.push(`workspace:${group.key}`)
+    if (group.expanded) {
+      for (const child of input.childrenByParent.get(group.key) ?? []) pushGroup(child)
+    }
+    for (const node of watermarkRows(group.sessions, input.watermarkOf(group.key)).rows) {
+      keys.push(`session:${node.id}`)
+    }
+    if (watermarkRows(group.sessions, input.baselineOf(group.key)).hiddenCount > 0) {
+      keys.push(`overflow:${group.key}`)
+    }
+  }
+  if (input.folderMode) {
+    for (const { folder, groups } of input.sections) {
+      keys.push(`folder:${folder.folderId}`)
+      if (!folder.expanded) continue
+      for (const group of groups) pushGroup(group)
+    }
+    for (const group of input.loose) pushGroup(group)
+  } else {
+    for (const group of input.childrenByParent.get(undefined) ?? []) pushGroup(group)
+  }
+  return keys
 }
 
 /**

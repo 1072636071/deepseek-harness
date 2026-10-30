@@ -8,7 +8,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { SessionProjectionSnapshot } from '@deepseek-ai/dsh-api-session-controller/client'
 import {
   type ArchivedFilter, type GroupNode, type WorkspaceRowStatus,
-  deriveFlat, deriveGroups, deriveSearchResults, layoutFolderSections, orderByRecency, owningGroupKey,
+  deriveFlat, folderRowStatus, deriveGroups, deriveSearchResults, layoutFolderSections, orderByRecency, owningGroupKey,
   owningParentFolder, pinCurrentBlank, reconcileManualOrder, sessionMemberIds, visibleSessionIds,
   workspaceLabel, UNGROUPED_KEY,
 } from '../src/client/tree.ts'
@@ -622,6 +622,37 @@ describe('deriveGroups', () => {
       )
       // The only unarchived member is the blank placeholder: nothing to report.
       expect(groups[0]!.status).toBe('inactive')
+    })
+  })
+
+  describe('folder row status', () => {
+    it('reports inactive for a folder with no member Workspace and for one whose members are all empty', () => {
+      expect(folderRowStatus([])).toBe('inactive')
+      expect(folderRowStatus(['inactive', 'inactive'])).toBe('inactive')
+    })
+
+    it('applies the fixed priority 红 > 黄 > 绿 > 蓝 across members', () => {
+      expect(folderRowStatus(['present', 'unread'])).toBe('unread')
+      expect(folderRowStatus(['unread', 'running'])).toBe('running')
+      expect(folderRowStatus(['running', 'attention'])).toBe('attention')
+      expect(folderRowStatus(['inactive', 'attention'])).toBe('attention')
+    })
+
+    it('reports the same status for any member order', () => {
+      const members: WorkspaceRowStatus[] = ['present', 'attention', 'inactive', 'unread', 'running']
+      expect(folderRowStatus(members)).toBe('attention')
+      expect(folderRowStatus([...members].reverse())).toBe('attention')
+      expect(folderRowStatus([members[1]!, members[4]!])).toBe('attention')
+    })
+
+    it('folds the joined Workspace rows, so a collapsed folder reports its members', () => {
+      const live = summary('live', 1)
+      const statuses: SessionStatusSnapshot = new Map([[live.id, status(undefined, { running: true })]])
+      const groupStatus = (expansion: readonly string[]): WorkspaceRowStatus => deriveGroups(
+        list(live), [workspace('project', ['live'])], noRows, statuses, view(expansion),
+      )[0]!.status
+      expect(folderRowStatus([groupStatus(['project'])])).toBe('running')
+      expect(folderRowStatus([groupStatus([])])).toBe('running')
     })
   })
 })

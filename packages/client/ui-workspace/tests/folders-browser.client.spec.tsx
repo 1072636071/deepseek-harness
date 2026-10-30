@@ -9,10 +9,10 @@ import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
-import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
+import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot, WorkspaceView, WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { WorkspaceFoldersSnapshot } from '@deepseek-ai/dsh-api-workspace-folders/client'
-import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
+import type { SessionStatus, SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import type { DirectoryFlowOwnerProps, WorkspaceBrowserProps } from '../src/client/contract/slots.ts'
@@ -38,6 +38,24 @@ const folderState = (
   folders: WorkspaceFoldersSnapshot['folders'],
 ): WorkspaceFoldersSnapshot => ({ folders, state: 'idle', error: null })
 const noPendingInteraction: SessionStatusSnapshot = new Map()
+const summary = (id: string, overrides: Partial<SessionSummary> = {}): SessionSummary => ({
+  id: sid(id), title: overrides.displayTitle ?? id, displayTitle: id, running: false, blank: false, updatedAt: 1, ...overrides,
+  retainedBy: overrides.retainedBy ?? {},
+})
+const sessionState = (items: readonly SessionSummary[]): SessionListState => ({
+  ids: items.map(item => item.id),
+  byId: Object.fromEntries(items.map(item => [item.id, item])),
+  phase: 'ready',
+  projectionsBySession: {},
+})
+/** Status snapshot for one Session, absent facts defaulted to idle. */
+const statusMap = (id: string, overrides: Partial<SessionStatus>) =>
+  hook<SessionStatusSnapshot>(
+    new Map([[sid(id), { running: false, pendingInteraction: undefined, completionUnread: false, ...overrides }]]),
+  )
+/** Accessible status label of one row, read from its status dot. */
+const rowStatusLabel = (rowKey: string): string | null =>
+  document.querySelector(`[data-row-key="${rowKey}"] [role="img"]`)?.getAttribute('aria-label') ?? null
 function hook<T>(snapshot: T) {
   return function select<S>(selector: (state: T) => S): S { return selector(snapshot) }
 }
@@ -180,5 +198,57 @@ describe('WorkspaceBrowser folders', () => {
     store.actions.setGroupBy('workspace')
     fireEvent.click(screen.getByRole('button', { name: 'View options' }))
     expect(screen.queryByRole('menuitem', { name: 'By folder' })).toBeNull()
+  })
+
+  describe('folder row aggregate status', () => {
+    const folder = (expanded: boolean, workspaceIds: string[]) => ({
+      folderId: 'f1' as never, title: 'Work', workspaceIds: workspaceIds.map(wid),
+      expanded, createdAt: '2026-01-01T00:00:00.000Z',
+    })
+
+    it.each([
+      ['attention', { projectionValues: { sessionTurnOutcome: { lastTurnEnd: 'error' } } }, undefined,
+        'A session needs attention'],
+      ['running', {}, { running: true }, 'A session is running'],
+      ['unread', {}, { completionUnread: true }, 'A finished session is unread'],
+      ['present', {}, undefined, 'Has sessions'],
+    ] as const)('reports %s for a folder whose only member reports it', (_, memberOverrides, statusOverrides, label) => {
+      mount({
+        useSessions: hook(sessionState([summary('alpha', memberOverrides)])),
+        useWorkspaces: hook(workspaceState([workspace('alpha', ['alpha'], 'Alpha')])),
+        useFolders: hook(folderState([folder(true, ['alpha'])])),
+        useSessionStatus: statusOverrides === undefined
+          ? hook(noPendingInteraction)
+          : statusMap('alpha', statusOverrides),
+      })
+      expect(rowStatusLabel('folder:f1')).toBe(label)
+    })
+
+    it('reports no unarchived sessions for an empty folder and for one whose members are empty', () => {
+      mount({ useFolders: hook(folderState([folder(true, [])])) })
+      expect(rowStatusLabel('folder:f1')).toBe('No unarchived sessions')
+      cleanup()
+      mount({
+        useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')])),
+        useFolders: hook(folderState([folder(true, ['alpha'])])),
+      })
+      expect(rowStatusLabel('folder:f1')).toBe('No unarchived sessions')
+    })
+
+    it('keeps the dot on a collapsed folder and folds the most urgent member', () => {
+      mount({
+        useSessions: hook(sessionState([summary('alpha'), summary('beta')])),
+        useWorkspaces: hook(workspaceState([
+          workspace('alpha', ['alpha'], 'Alpha'), workspace('beta', ['beta'], 'Beta'),
+        ])),
+        useFolders: hook(folderState([folder(false, ['alpha', 'beta'])])),
+        useSessionStatus: statusMap('beta', { completionUnread: true }),
+      })
+      // The member rows are not rendered, the folder row still reports them.
+      expect(document.querySelector('[data-row-key="workspace:alpha"]')).toBeNull()
+      expect(rowStatusLabel('folder:f1')).toBe('A finished session is unread')
+      // A member's plain presence is outranked by the unread member.
+      expect(rowStatusLabel('folder:f1')).not.toBe('Has sessions')
+    })
   })
 })
