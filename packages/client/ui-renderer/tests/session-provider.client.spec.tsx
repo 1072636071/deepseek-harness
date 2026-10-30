@@ -54,6 +54,7 @@ function makeHost(body: SessionBody, options: { installRenderArea?: boolean; opt
   })
   const sessionAdapter: SlotScopeAdapter = {
     current: absent,
+    rosterRevision: { getSnapshot: () => 0, subscribe: () => () => {} },
     bindingSource,
     ...options.installRenderArea === false ? {} : { renderArea: renderSessionArea },
   }
@@ -83,7 +84,7 @@ function makeHost(body: SessionBody, options: { installRenderArea?: boolean; opt
     getFactoryVersion: () => 0,
     factoryOf: () => undefined,
     isFactoryLive: () => false,
-    root, scopeRevision: observable(0), scope: () => sessionAdapter,
+    root, rosterEpoch: observable(0), scopeRevision: observable(0), scope: () => sessionAdapter,
   }
   return {
     host, bindingSource,
