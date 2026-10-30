@@ -169,6 +169,12 @@
     - id: tool-working-directory
       name: '@deepseek-ai/dsh-tool-working-directory'
 
+    # Lists the durable workspace registry for the model. The registry itself is
+    # a web-site layer row, so a profile without it (headless, sdk) leaves this
+    # row pending for want of the service rather than exposing an empty tool.
+    - id: tool-workspace
+      name: '@deepseek-ai/dsh-tool-workspace'
+
     - id: session-projection
       name: '@deepseek-ai/dsh-session-projection'
 

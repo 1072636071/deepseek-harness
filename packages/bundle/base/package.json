@@ -128,6 +128,7 @@
     "@deepseek-ai/dsh-otel": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*",
     "@deepseek-ai/dsh-tool-working-directory": "workspace:*",
+    "@deepseek-ai/dsh-tool-workspace": "workspace:*",
     "@deepseek-ai/dsh-web-deepseek-api": "workspace:*"
   },
   "peerDependencies": {
