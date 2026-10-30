@@ -110,7 +110,7 @@ pnpm run demo:ptc -- "task"  # headless PTC 模式运行
 ## 约定
 
 - 每个 npm 包都命名为 `@deepseek-ai/dsh-<name>`；内置包需重新划分作用域（[映射](docs/rescope.md)）并设为 `private: true`。`@deepseek-ai/cordis` 是每个 harness 包的 peerDependency（同时列入 dev 依赖）。
-- 全面使用 ESM（`"type": "module"`）。跨包引用使用包名，本地相对导入使用 `.ts` 扩展名。配置子进程在纯净 Node 下运行已构建的 `lib/`；源码级回归测试使用各自声明的启动器（[测试策略](docs/testing.md#test-subprocess-launch-modes)）。`dsh` CLI 的源码启动经由 tsx 的仅 ESM 钩子（`node --import tsx/esm`）执行；它能触及的模块必须保持 ESM（不得有仅 CJS 的导出）—— 在整个 engines 支持范围内都不可依赖 Node 原生 TypeScript 模式（[源码启动契约](.agents/notes/implemented/architecture/2026-07-29-dsh-source-launch-tsx-esm.md)）。Raw/Web 的 `cordis.yml` 中的裸插件必须出现在其 resolver manifest 的 `dependencies` 里；由 `verify-cordis-config` 强制。
+- 全面使用 ESM（`"type": "module"`）。跨包引用使用包名，本地相对导入使用 `.ts` 扩展名。配置子进程在纯净 Node 下运行已构建的 `lib/`；源码级回归测试使用各自声明的启动器（[测试策略](docs/testing.md#test-subprocess-launch-modes)）。`dsh` CLI 的源码启动经由 tsx 的仅 ESM 钩子（`node --import tsx/esm`）执行；它能触及的模块必须保持 ESM（不得有仅 CJS 的导出）（[源码启动契约](.agents/notes/implemented/architecture/2026-07-29-dsh-source-launch-tsx-esm.md)）。Raw/Web 的 `cordis.yml` 中的裸插件必须出现在其 resolver manifest 的 `dependencies` 里；由 `verify-cordis-config` 强制。
 - **注册即副作用**：所有贡献都通过 `ctx.effect()` / `ctx.on()` 完成；注册表的 `register()` 返回释放器（disposer）。
 - **运行时不变式只断言自己拥有的关系。** 校验权威事件流或可变数据，而不是服务或方法是否存在、插件元数据或 effect，也不是固定的纯示例。若不存在合理的关系，一个带解释的空伴生文件就是正确结果（[包级不变式规则](packages/AGENTS.md)）。
 - **类型化事件使用声明合并**，并采用可扩展合并的 map。事件 JSDoc 需要 `@mode` 以及 payload 的 `@param`；不出现在 payload 中的作用域键需要 `@dshScopeScan unsupported`。公开服务方法要记录参数与非 void 返回值。`SessionEventMap` 的每个成员都是读取即必需：不认识其类型的构建会拒绝该日志；只有结构性的格式变更才提升 `SESSION_FORMAT_VERSION`（[机制](.agents/notes/implemented/simplification/2026-08-25-fail-closed-session-event-vocabulary.md)）。
@@ -136,6 +136,7 @@ pnpm run demo:ptc -- "task"  # headless PTC 模式运行
 - **测试策略** —— [docs/testing.md](docs/testing.md)。每个非平凡的、模型或产品用户可见的变更都要更新一个免密钥的录制会话快照；[快照归属](snapshots/AGENTS.md) 把顶层目录树留给会话驱动的用例，其他期望输出留在各自 owner 目录。fixture 需在 macOS/Linux 上重放；修 fixture，而不是修归一化器。
 - **提前设计每个工具的 UI 呈现。** Host presenter 保持纯函数；Web 卡片由原始事件和持久化的结果元数据推导（[cookbook](docs/cookbook/adding-a-tool.md)）。
 - **为能力接缝、生命周期路径与转录输出规划单元、e2e 与快照覆盖**；缺失的快照框架支持在同一变更中一并补齐。
+- **本地 link 安装的 DSH 插件**：每次升级 DSH，都要复查 `~/.dsh/profiles/web` 中以 `link:` 依赖安装的每一个自研插件；该 profile 不存在时跳过（[名录](docs/自定义插件/自研DSH插件名录.md)）。
 - **两个 SDK 都要投射主循环。** `agent-loop`、会话生命周期与 `SessionEventMap` 的变更，要在同一 PR 中更新 TypeScript 与 Python SDK 的期望输出；`pnpm run test` 两者都不覆盖（[覆盖面](docs/testing.md#when-a-snapshot-test-is-required)）。
 - **有意识地选择 PR 历史。** 拆分独立变更，并在扩散前先修好引入问题的原 PR。独立分支/堆栈分支可以 merge-forward 或 rebase。重写历史使用 `--force-with-lease`，远端有变动就中止，绝不使用裸 `--force`；在采用更新的基线前，先保留进行中的 merge-forward 检查点（[理由](.agents/notes/implemented/process/2026-08-02-native-github-stacks-and-optional-rebases.md)）。
 - **标签：** 每个 PR 一个 `kind/*`，所有实质性变更打上全部相关 `area/*`，并使用原生 Issue Type（[分类](.agents/notes/implemented/process/2026-08-08-unified-github-label-taxonomy.md)）。
@@ -150,7 +151,7 @@ pnpm run demo:ptc -- "task"  # headless PTC 模式运行
 
 全部代码在 `strict: true` 与 `noImplicitAny` 下编译；每个残留的 `any` 都要说明为何无法收窄。每个模块和导出都要有简洁的 JSDoc 说明其不自明的契约；类函数导出包含 `@param`/`@returns`，由 `verify-export-jsdoc` 强制。继承声明的成员、插件协议槽位以及构造函数，把文档留在声明它们的 Service Definition、协议或类上。
 
-注释与文档陈述完整的契约和上下文，而不是推理过程记录。使用直接、具体的术语。不要使用隐喻。在写下 `contract`、`boundary`、`shape` 之前，先问是否有更精确的词能命名该对象：写 `response fields`、`JSON validation` 或 `ESM exports`，而不是 `response shape`、`validation boundary` 或 `module shape`。`contract` 只保留给前置条件、后置条件、不变式、兼容性承诺，以及调用方、被调方、实现者、提供者、生产者或消费者所依赖的其他义务。`boundary` 只保留给真实的进程、传输、安全、事务或生命周期边界。不要叙述控制流或测试、保留评审历史、复述代码。要保留行为、失败、时序、归属与安全使用方面的事实；并链接其理由。决策依据使用 [dsh-prose-standard](.agents/skills/dsh-prose-standard/SKILL.md)。把可机械校验的不变式接入一个会被执行的顶层门禁，并证明每条改动的验收路径都会拒绝一个非法用例。使用狭窄且有理由的例外，而不是全局关闭某条规则。
+注释与文档陈述完整的契约和上下文，而不是推理过程记录。使用直接、具体的术语，不用隐喻；写下 `contract`、`boundary`、`shape` 之前，先用更精确的词命名对象（`response fields`、`JSON validation`、`ESM exports`）。`contract` 只保留给前置条件、后置条件、不变式、兼容性承诺，以及调用方、被调方、实现者、提供者、生产者或消费者依赖的其他义务。`boundary` 只保留给真实的进程、传输、安全、事务或生命周期边界。不要叙述控制流或测试、保留评审历史、复述代码。要保留行为、失败、时序、归属与安全使用方面的事实；并链接其理由。决策依据使用 [dsh-prose-standard](.agents/skills/dsh-prose-standard/SKILL.md)。把可机械校验的不变式接入一个会被执行的顶层门禁，并证明每条改动的验收路径都会拒绝一个非法用例。使用狭窄且有理由的例外，而不是全局关闭某条规则。
 
 每次代码变更都要配套文档：一并更新受影响的 README 与 JSDoc 契约。常规双语文档工作遵循 [docs/AGENTS.md](docs/AGENTS.md)；只有用户明确调用时才可运行 `dsh-translate-docs`。描述当前状态的散文、每段一个物理行、每个事实只有一个归属地、以及字数预算，均规定在那里。
 
