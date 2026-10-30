@@ -15,6 +15,7 @@ Running status comes from Host list baselines or status events. Subagent catalog
 ## Table of Contents
 
 - [Access Hooks](#access-hooks)
+- [Scope Roster](#scope-roster)
 - [Model Experience](#model-experience)
 - [Known Limitations and Deferred Work](#known-limitations-and-deferred-work)
 - [Dev Note](#dev-note)
@@ -25,6 +26,11 @@ Running status comes from Host list baselines or status events. Subagent catalog
 ## Access Hooks
 
 The package injects the Client `remoteAccess` service and publishes Session access Hooks over its `source()`: the root `useSessionAccess(sessionId, action)` answers on one Session resource, and the Session-scope `useAccess(action)` answers on the bound Session's resource; the `global` resource's answer is a different Hook, `useRemoteAccess(action)`, so neither shadows the other. The SessionMaybe-scope `useAccess(action)` returns `undefined` while no Session is bound, which callers treat as not allowed; a decision on the `global` resource reads `useRemoteAccess` instead. Snapshot semantics belong to [`dsh-api-remote-access`](../../api/remote-access/README.md#client-face).
+
+<a id="scope-roster"></a>
+## Scope Roster
+
+`ctx.uiSession.provide()` contributions form the Session standard-source roster. Every provide and disposal rebuilds the bindings and then advances the adapter's `rosterRevision`; the Slot registry forwards that revision to the shared roster epoch, so a contained crash caused by a withdrawn Session seat retries when the seat returns, with no root binding publish involved. A withdrawal logs each removed seat by the prop consumers render, and a seat that never returns keeps its crash face.
 
 <a id="model-experience"></a>
 ## Model Experience

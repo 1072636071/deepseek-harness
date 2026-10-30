@@ -20,7 +20,7 @@ Every Workspace row carries one aggregate status dot over its own unarchived Ses
 | `present` | Blue `info` | The Workspace has Sessions and none of the above |
 | `inactive` | Grey `idle` | The Workspace has no unarchived Session |
 
-Precedence is fixed — attention, running, unread, presence — and independent of the order the Sessions appear in. `attention` is per Session and reflects only that Session's latest turn, so a later turn that succeeds clears it. Archived Sessions and the provisional blank New Session placeholder never contribute. Folder header rows carry no aggregate: the user asked for the Workspace row, and the existing limitation that pending interactions do not aggregate into a Workspace row remains.
+Precedence is fixed — attention, running, unread, presence — and independent of the order the Sessions appear in. `attention` is per Session and reflects only that Session's latest turn, so a later turn that succeeds clears it. Archived Sessions and the provisional blank New Session placeholder never contribute. Folder header rows carried no aggregate when this decision landed, because the request named the Workspace row; [Folder row aggregate status](2026-10-25-folder-row-aggregate-status.md) later reversed that for the folder grouping's folder rows, which now fold their member Workspace rows under the same precedence. The limitation that pending interactions do not aggregate into either row kind remains.
 
 The fold reads a Workspace's complete unarchived ownership rather than its rendered rows, so a collapsed group reports the same status as an expanded one, and the archived-only filter and search cannot change it. `deriveGroups` collects that ownership separately from the visible member list it already built.
 
@@ -30,7 +30,7 @@ Blue is a new `StateDot` state rather than a reuse of `idle` or `business`: a Wo
 
 ## Alternatives considered
 
-**Aggregate to a folder header row as well.** The folder layer groups Workspaces without owning Sessions, so a folder dot would report a second-hand summary over rows that already each carry one. Excluded by the request.
+**Aggregate to a folder header row as well.** Rejected in this change: the folder layer groups Workspaces without owning Sessions, so a folder dot would report a second-hand summary over rows that already each carry one, and the request named the Workspace row. [Folder row aggregate status](2026-10-25-folder-row-aggregate-status.md) later adopted this alternative for folder rows.
 
 **Show attention permanently until the user acknowledges it.** A stuck red dot on a Workspace whose later turn already succeeded would misreport current state, and nothing in the data model records acknowledgement. Last-turn-only is self-healing and needs no dismissal state.
 

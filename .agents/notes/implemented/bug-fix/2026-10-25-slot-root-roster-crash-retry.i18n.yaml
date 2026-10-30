@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-25-slot-root-roster-crash-retry.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-10-25-slot-root-roster-crash-retry.md
+/agent-note-retry-slot-crashes-caused-by-withdrawn-standard-sources:
+  en: ea65c0b0460d7c83
+  zh: cad9467dabef0481
+/agent-note-retry-slot-crashes-caused-by-withdrawn-standard-sources/problem:
+  en: 57096c679c7fb93d
+  zh: 4a0a0ec6281139e9
+/agent-note-retry-slot-crashes-caused-by-withdrawn-standard-sources/decision:
+  en: 85bbae52074ed193
+  zh: 5c4ab460bc5f49a0
+/agent-note-retry-slot-crashes-caused-by-withdrawn-standard-sources/alternatives-considered:
+  en: bf16c57e9488a077
+  zh: 1678c3b66dfc6343
+/agent-note-retry-slot-crashes-caused-by-withdrawn-standard-sources/consequences:
+  en: 5e7602734be4f336
+  zh: ba1ca95b91b7705b

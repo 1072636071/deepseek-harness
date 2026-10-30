@@ -63,7 +63,7 @@ register 调用可以用 `store: defineStore(...)` 声明 store 席位：`init` 
 
 ### 渲染器约定
 
-`renderer.ts` 携带安装约定（`SlotRenderer`、`SlotRendererHost`）以及 `StaleAuthorizationError`/`SlotOwnershipError`；ui-renderer 负责实现，并在其插件生命周期中完成安装。引擎产物与渲染器宿主约定携带裸快照 source（`getSnapshot`/`subscribe`），绝不携带 React 钩子——钩子绑定属于渲染机制。Factory 崩溃使用普通监督通道，幂等 effect 仅在 commit 后保留逐渲染位置 Store handle。
+`renderer.ts` 携带安装约定（`SlotRenderer`、`SlotRendererHost`）以及 `StaleAuthorizationError`/`SlotOwnershipError`；ui-renderer 负责实现，并在其插件生命周期中完成安装。引擎产物与渲染器宿主约定携带裸快照 source（`getSnapshot`/`subscribe`），绝不携带 React 钩子——钩子绑定属于渲染机制。Factory 崩溃使用普通监督通道，幂等 effect 仅在 commit 后保留逐渲染位置 Store handle。abdicate 的 entry 崩溃只在该 entry 所在的 cell 内、且仅针对当前名单 epoch 生效：`SlotCore.advanceRosterEpoch` 会让该记录失效，因此当 provider 暂时撤走时崩溃的 entry，会在对应名单重新发布后再次渲染。两类名单轴推进同一个计数器——根级绑定，以及每个已安装 scope adapter 通过 `SlotScopeAdapter.rosterRevision` 的发布——由 `SlotCore.rosterEpoch` 读取，且不存在第二个写者。
 
 </details>
 

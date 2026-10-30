@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The workspace family lets a host product keep an ordered list of named projects and group each project's sessions by directory. Users can browse those projects and sessions, hide a session from the grouping without deleting it, and remove a project without deleting its folder or session history. Hidden or removed sessions remain available as ungrouped history. Choose this family for a persistent project surface; it requires session storage and a persistence backend, and it does not expose tools, prompts, or session events to the model.
+The workspace family lets a host product keep an ordered list of named projects and group each project's sessions by directory. Users can browse those projects and sessions, hide a session from the grouping without deleting it, and remove a project without deleting its folder or session history. Hidden or removed sessions remain available as ungrouped history. Choose this family for a persistent project surface; it requires session storage and a persistence backend. The family also ships one model-facing tool, `workspace_list`, which reads the registry; the group exposes no prompts or session events to the model.
 
 ## Table of Contents
 
@@ -25,6 +25,7 @@ The workspace family lets a host product keep an ordered list of named projects 
 | Package | Role | ctx key |
 |---|---|---|
 | [`workspace`](workspace/README.md) | Provides named, ordered projects with the sessions that ran in each directory | `ctx.workspaceRegistry` |
+| [`tool-workspace`](tool-workspace/README.md) | Model-facing `workspace_list` tool: every registered workspace with its title, canonical path, and session count | registers on `ctx.tools` |
 
 -----
 

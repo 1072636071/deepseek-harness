@@ -103,6 +103,10 @@ Renderer 还会根据声明的 store 创建 `useStore`，并根据声明的 loca
 
 框架与领域 adapter owner 可以通过 `ctx.slots.provideRoot()` 或 `ctx.uiSession.provide()` 扩展标准集合，同时提供对应的 `GlobalStandardProps`、`SessionStandardProps` 或 `SessionMaybeStandardProps` 声明合并。普通功能组件不应自行创建 React hook prop，也不应为 entry 私有数据添加全局标准 prop。
 
+### 标准 source 名单与崩溃重试
+
+两类名单共用一个 epoch。`ctx.slots.provideRoot()` 的贡献会重建根级绑定；`ctx.uiSession.provide()` 的贡献会重建每个 Session 作用域绑定，其 adapter 通过 `SlotScopeAdapter.rosterRevision` 发布每次重建。两类发布都会推进所有 outlet 与崩溃边界读取的名单 epoch，因此由任一名单中的座位引发的崩溃，都会在该名单重新发布时重试。为 HMR 重建而卸载的 provider 会先撤走自己的座位，替代者随后才注册，而消费方在此期间仍在渲染：读取已撤走座位的组件会在自身边界内崩溃，每个被撤走的座位都会以消费方渲染所用的 prop 名（`use<Name>`）记录到日志。每次发布也是重试信号：它会重新投影由这些崩溃退休的 entry，并复位所有被隔离的崩溃面；每个边界都以相同的元素身份重新渲染，因此健康子树保留局部状态、不会被重新挂载。epoch 是共用的，因此复位是粗粒度的：无关的被隔离故障也会在每次名单发布时重试一次。在名单已经恢复之后才上报的崩溃会等到下一次发布——只会延后，不会永久锁死。始终不返回的座位会保留可见的崩溃面（`data-slot-error` 或 `data-factory-error`）与已记录的成因；它只会在之后任何一次名单发布时再重试一次，不会为它单独启动重试，也不会连续重试。
+
 ## 开发者提供的 injection
 
 注册项的 `inject` 选项是通常使用的功能私有注入点。它的 factory 在插件的 `apply` 世界中运行，可以闭包捕获已经注入的 Cordis service，并且只返回组件所需的数据与 callback。对于 `session` slot，它会收到 `sessionId`；对于 `session-maybe`，它收到 `sessionId | undefined`；声明 store 后，它还会收到该 store 绑定后的 actions。

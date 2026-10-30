@@ -15,6 +15,7 @@ kind: "package-reference"
 ## 目录
 
 - [访问 Hook](#access-hooks)
+- [作用域名单](#scope-roster)
 - [模型体验](#model-experience)
 - [已知限制与暂缓事项](#known-limitations-and-deferred-work)
 - [开发备注](#dev-note)
@@ -25,6 +26,11 @@ kind: "package-reference"
 ## 访问 Hook
 
 本包注入 Client `remoteAccess` 服务，并在其 `source()` 之上发布会话访问 Hook：根作用域的 `useSessionAccess(sessionId, action)` 回答某一个 Session 资源上的访问，Session 作用域的 `useAccess(action)` 回答所绑定 Session 资源上的访问；`global` 资源上的答案是另一个 Hook `useRemoteAccess(action)`，两者互不遮蔽。SessionMaybe 作用域的 `useAccess(action)` 在未绑定 Session 时返回 `undefined`，调用方将其视为不允许；需要 `global` 资源上的判断时读 `useRemoteAccess`。快照语义归 [`dsh-api-remote-access`](../../api/remote-access/README.zh.md#client-face)。
+
+<a id="scope-roster"></a>
+## 作用域名单
+
+`ctx.uiSession.provide()` 的贡献构成 Session 标准 source 名单。每次 provide 与释放都会重建绑定，随后推进 adapter 的 `rosterRevision`；Slot 注册表把该 revision 转发到共用的名单 epoch，因此由被撤走 Session 座位引发的被隔离崩溃，会在座位返回时重试，且不涉及任何根级绑定发布。撤走时按消费方渲染所用的 prop 逐个记录被移除的座位，永不返回的座位则保留其崩溃面。
 
 <a id="model-experience"></a>
 ## 模型体验

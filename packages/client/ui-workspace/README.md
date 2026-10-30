@@ -11,7 +11,7 @@ Desktop product events use the optional [product analytics service](../product-a
 
 ## Summary
 
-This package lets users browse grouped or flat Session lists, choose a Workspace for a new Session, and manage both through add, rename, reorder, search, fork, archive, and deletion; the Session row menu and hover buttons are plugin-extensible slot lists. Pending interactions appear as warning dots and subagent Sessions stay hidden. Each Workspace row shows one aggregate status dot over its unarchived Sessions: attention, running, unread completion, presence, or inactivity. An idle Session with scheduled tasks shows a clock mark, and the hover card lists them. Canonically distinct paths stay separate Workspaces; adding one needs a composed directory picker.
+This package browses grouped or flat Session lists, picks a Workspace for a new Session, and manages both through add, rename, reorder, search, fork, archive, and deletion; row menus and hover buttons are plugin-extensible slots. Pending interactions show as warning dots; subagent Sessions stay hidden. Each Workspace row shows one aggregate status dot over its unarchived Sessions (attention, running, unread completion, presence, inactivity), and a folder row folds the same dot over its member Workspaces. An idle Session with scheduled tasks shows a clock mark on hover. Distinct paths stay separate Workspaces; adding one needs a composed directory picker.
 
 ## Table of Contents
 
@@ -37,7 +37,7 @@ Pinned Sessions lead ordinary Sessions in both grouped and flat views. **Last up
 
 Pinning moves the Session to the front of its complete saved sequence without changing the selected mode. It leads the pinned partition in Manual but need not lead it in Last updated. Unpinning leaves the saved position unchanged. Dragging either a pinned or ordinary row edits that same complete sequence and selects Manual; hidden archived members are retained. Missing pinned members prepend in pin-array order. New ordinary forks precede their sources in the complete sequence without inheriting pin membership; visible pins still lead ordinary rows. Other missing members append by recency with missing archives last. Supplementation stays in memory until a Session-order write records the complete result. Archive filtering alone changes neither saved positions nor account membership.
 
-The selected blank **New Session** retains its provisional first slot and cannot be dragged; after its first prompt it becomes an ordinary draggable row, retaining that position in Manual or following its current timestamp in Last updated. A collapsed-group drag uses the target Session identity and keeps the source visible. Session display orders for real Workspaces, Ungrouped, and the flat list are browser-local; Workspace group drag order remains Host-durable.
+The selected blank **New Session** retains its provisional first slot and cannot be dragged; after its first prompt it becomes an ordinary draggable row, retaining that position in Manual or following its current timestamp in Last updated. A collapsed-group drag uses the target Session identity and keeps the source visible. The insertion line shows where the row will land, so releasing inside the near half of an adjacent row still moves it one slot. Session display orders for real Workspaces, Ungrouped, and the flat list are browser-local; Workspace group drag order remains Host-durable.
 
 ### Workspace hierarchy
 
@@ -82,6 +82,8 @@ Every Workspace row carries one aggregate status dot over its own unarchived Ses
 | Inactive | Grey idle | The Workspace has no unarchived Session |
 
 Precedence is fixed and independent of the order the Sessions appear in: attention, then running, then unread, then presence. Attention is per Session and reflects only that Session's latest turn, so a later turn that succeeds clears it. Archived Sessions and the provisional blank New Session placeholder never contribute.
+
+A folder row in the folder grouping carries the same dot. A folder owns no Sessions, so it folds the statuses of its member Workspace rows under the same precedence; a folder with no member, or whose members are all inactive, reports Inactive. The dot is unaffected by the folder's expansion, because the fold reads the member rows the layout holds whether or not it renders them. Like a Workspace row, the folder row has no `aria-label`: its title text and the dot's accessible name compose the row's name.
 
 The fold reads a Workspace's complete unarchived ownership rather than its rendered rows, so a collapsed group reports the same status as an expanded one, and the archived-only filter and search do not change it. The attention state is the one input this package does not already hold: it comes from the durable `sessionTurnOutcome` projection that [`api/session-controller`](../../api/session-controller/README.md) folds from `turn/end`. That key is absent in an assembly that does not serve it, in which case the row reports the remaining states and simply never shows attention.
 
@@ -236,7 +238,7 @@ These limits define the search depth, the archive surface, and the picking carri
 
 - **No fuzzy content search or event deep links** — the content backend uses literal token/phrase matching, and selecting a result opens the Session rather than the matching event.
 - **No Session deletion** — sessions can be archived but never deleted; archived rows stay recoverable in place through the archived view filter and the search results' unarchive action, and Workspace registration deletion does not delete Sessions.
-- **Pending user interaction is not aggregated into a Workspace row** — the Workspace status dot above covers attention, running, unread, presence, and inactivity only; a Session waiting for approval, a plan review, or an answer inside a collapsed group lights no Workspace-row indicator and becomes visible only after that group is expanded.
+- **Pending user interaction is not aggregated into a Workspace or folder row** — the status dots above cover attention, running, unread, presence, and inactivity only; a Session waiting for approval, a plan review, or an answer inside a collapsed group lights no Workspace-row or folder-row indicator and becomes visible only after that group is expanded.
 - **Native folder selection depends on the local Host carrier** — under the `-native` composition, in-process or remote browser deployments cannot open a local operating-system dialog; remote-capable picking is the `-browse` composition's in-app flow.
 
 <a id="dev-note"></a>

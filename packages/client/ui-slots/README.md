@@ -63,7 +63,7 @@ The ordinary Slot design is one table: declaration = render authorization = runt
 
 ### The renderer contract
 
-`renderer.ts` carries the installation contract (`SlotRenderer`, `SlotRendererHost`) plus `StaleAuthorizationError`/`SlotOwnershipError`; ui-renderer owns both the implementation and its plugin-lifecycle installation. Engine products and the renderer host contract carry bare snapshot sources (`getSnapshot`/`subscribe`), never React hooks — hook binding belongs to the render machinery. Factory crashes use the ordinary supervision channel, and an idempotent effect retains per-position Store handles only after commit.
+`renderer.ts` carries the installation contract (`SlotRenderer`, `SlotRendererHost`) plus `StaleAuthorizationError`/`SlotOwnershipError`; ui-renderer owns both the implementation and its plugin-lifecycle installation. Engine products and the renderer host contract carry bare snapshot sources (`getSnapshot`/`subscribe`), never React hooks — hook binding belongs to the render machinery. Factory crashes use the ordinary supervision channel, and an idempotent effect retains per-position Store handles only after commit. An abdicating entry crash retires that entry from its cell for the current roster epoch only: `SlotCore.advanceRosterEpoch` retires the record, so an entry that crashed while a provider was momentarily withdrawn renders again once its roster republishes. Both roster axes advance the same counter — the root binding, and each installed scope adapter through `SlotScopeAdapter.rosterRevision` — and `SlotCore.rosterEpoch` reads it; no other writer exists.
 
 </details>
 

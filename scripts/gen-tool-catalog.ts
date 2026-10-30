@@ -27,6 +27,8 @@ import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import WorkingDirectory from '@deepseek-ai/dsh-working-directory'
 import * as ToolWorkingDirectory from '@deepseek-ai/dsh-tool-working-directory'
+import * as ToolWorkspace from '@deepseek-ai/dsh-tool-workspace'
+import type WorkspaceRegistryService from '@deepseek-ai/dsh-workspace'
 import * as ToolWorktree from '@deepseek-ai/dsh-experimental-tool-worktree'
 import { AttachmentStore } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentLimits, ImageAttachmentRef, SaveImageAttachment, StoredImageAttachment } from '@deepseek-ai/dsh-attachment'
@@ -632,6 +634,21 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolWorkingDirectory)
     },
     note: 'Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-workspace',
+    dir: 'tool-workspace',
+    source: 'packages/workspace/tool-workspace/src/index.ts',
+    requires: ['ctx.tools', 'ctx.workspaceRegistry'],
+    writes: ['tool/call', 'tool/result'],
+    async mount(ctx) {
+      // Schema harvest never lists a workspace, so the registry is a
+      // declaration-only stub.
+      ctx.provide('workspaceRegistry', {} as WorkspaceRegistryService)
+      await ctx.plugin(ToolWorkspace)
+    },
+    note:
+      'workspace_list is read-only: it enumerates the durable workspace registry in registry order, with an optional per-workspace session-id list and an optional live directory status. It never creates, deletes, renames, or changes a directory.',
   },
   {
     pkg: '@deepseek-ai/dsh-experimental-tool-worktree',

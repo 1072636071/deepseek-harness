@@ -44,6 +44,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/task`, `agent/inbox/spliced`, `user/message on inbox claim`, `tool/result` | - | All nine tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-working-directory` | `working_directory` | `ctx.tools`, `ctx.workingDirectory` | `tool/call`, `working-directory/change`, `user context for directory changes`, `tool/result` | - | Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed. |
+| `@deepseek-ai/dsh-tool-workspace` | `workspace_list` | `ctx.tools`, `ctx.workspaceRegistry` | `tool/call`, `tool/result` | - | workspace_list is read-only: it enumerates the durable workspace registry in registry order, with an optional per-workspace session-id list and an optional live directory status. It never creates, deletes, renames, or changes a directory. |
 | `@deepseek-ai/dsh-experimental-tool-worktree` | `create_worktree` | `ctx.tools`, `ctx.worktrees`, `a calling Agent` | `tool/call`, `Git branch and checkout`, `working-directory/change`, `tool/result` | - | Explicit experimental composition only. Creates a new branch and checkout from a pinned local commit under existing write permissions, then changes the Session directory. Leaving retains the branch and checkout. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-workspace-dependencies` | `load_workspace_dependencies` | `ctx.tools` | `tool/call`, `tool/result` | - | - |
@@ -2631,6 +2632,34 @@ Read the current working directory, or change it with cd. Relative paths use the
 Source: [`packages/session/tool-working-directory/src/index.ts`](../packages/session/tool-working-directory/src/index.ts)
 
 Reads or changes the calling Session directory. Existing shells and processes retain their own directories; origin metadata and permission roots stay fixed.
+
+<a id="deepseek-aidsh-tool-workspace"></a>
+
+## `@deepseek-ai/dsh-tool-workspace`
+
+### `workspace_list`
+
+List every workspace in the workspace registry, in registry order: its title, canonical path, and session count. A workspace is a registry record over an existing directory with a title and its sessions; it is not a filesystem directory listing. Use it to find the canonical path of another workspace before a cross-workspace task. Read-only: it never creates, deletes, renames, or changes any working directory.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "includeSessions": {
+      "type": "boolean",
+      "description": "Include each workspace's session ids. Defaults to false."
+    },
+    "checkMissing": {
+      "type": "boolean",
+      "description": "Check every workspace directory on disk and report status ok or missing-dir. Defaults to false."
+    }
+  }
+}
+```
+
+Source: [`packages/workspace/tool-workspace/src/index.ts`](../packages/workspace/tool-workspace/src/index.ts)
+
+workspace_list is read-only: it enumerates the durable workspace registry in registry order, with an optional per-workspace session-id list and an optional live directory status. It never creates, deletes, renames, or changes a directory.
 
 <a id="deepseek-aidsh-experimental-tool-worktree"></a>
 

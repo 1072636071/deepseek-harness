@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-10-25-folder-row-aggregate-status.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-10-25-folder-row-aggregate-status.md
+/agent-note-folder-row-aggregate-status:
+  en: cda9a0e0321f5cf2
+  zh: f92339013a3392e1
+/agent-note-folder-row-aggregate-status/problem:
+  en: 68df9a0ce899ee5e
+  zh: 86d945cf7f893ce6
+/agent-note-folder-row-aggregate-status/decision:
+  en: 69443f3b15745ab2
+  zh: a2bb3396bbb1b9df
+/agent-note-folder-row-aggregate-status/alternatives-considered:
+  en: d1a10456b7968ff6
+  zh: 0659fbc068918f08
+/agent-note-folder-row-aggregate-status/consequences:
+  en: bd30c28545cadc0f
+  zh: 0c6cda854dd65c58
