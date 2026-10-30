@@ -142,6 +142,15 @@ export class SlotRegistry extends Service {
       return () => { this._rootListeners.delete(listener) }
     },
   }
+  private readonly _rosterEpochListeners = new Set<() => void>()
+  private readonly _rosterEpochSource: HostObservable<number> = {
+    // The core owns the counter; this face only republishes it.
+    getSnapshot: () => this._core.rosterEpoch(),
+    subscribe: (listener) => {
+      this._rosterEpochListeners.add(listener)
+      return () => { this._rosterEpochListeners.delete(listener) }
+    },
+  }
   private readonly _scopes = new Map<Exclude<SlotScope, 'root' | 'session-maybe'>, SlotScopeAdapter>()
   private _scopeRevision = 0
   private readonly _scopeListeners = new Set<() => void>()
@@ -341,8 +350,13 @@ export class SlotRegistry extends Service {
     if (this._scopes.has(scope)) throw new Error(`slot scope '${scope}' already has an adapter`)
     this.ctx.effect(() => {
       this._scopes.set(scope, adapter)
+      // One retry axis for every standard-source roster: a scope adapter that
+      // republishes its roster (an HMR teardown of a scoped provider) advances
+      // the same core epoch the root binding uses.
+      const stopRoster = adapter.rosterRevision.subscribe(() => { this.publishRosterEpoch() })
       this.publishScopeRevision()
       return () => {
+        stopRoster()
         if (this._scopes.get(scope) === adapter) {
           this._scopes.delete(scope)
           this.publishScopeRevision()
@@ -405,9 +419,10 @@ export class SlotRegistry extends Service {
   }
 
   /**
-   * Shadowing winners per cell for a key: the first live (non-abdicated)
-   * entry of each cell in priority order — what outlets render; chain keys
-   * pass through unchanged (election consumes every entry). The raw
+   * Shadowing winners per cell for a key: the first live entry of each cell in
+   * priority order — what outlets render; an abdication excludes its entry only
+   * for the current root roster epoch. Chain keys pass through unchanged
+   * (election consumes every entry). The raw
    * {@link SlotRegistry.entries} view stays the inspection surface. Fresh
    * array per call, not a uSES getSnapshot source.
    * @param key - SlotMap key.
@@ -561,6 +576,7 @@ export class SlotRegistry extends Service {
       factoryOf: name => this._core.factory(name),
       isFactoryLive: definition => this._core.isFactoryLive(definition),
       root: this._rootSource,
+      rosterEpoch: this._rosterEpochSource,
       scopeRevision: this._scopeRevisionSource,
       scope: scope => service._scopes.get(scope === 'session-maybe' ? 'session' : scope),
       get locale() { return service._locale },
@@ -570,6 +586,7 @@ export class SlotRegistry extends Service {
 
   /** Validate and atomically publish the current root contribution roster. */
   private rebuildRootBinding(): void {
+    const previous = this._rootBinding
     const hooks: Record<string, HostObservable<unknown>> = {}
     const keyedHooks: Record<string, import('@deepseek-ai/dsh-client-ui-slots').KeyedStandardSource> = {}
     const props: Record<string, unknown> = {}
@@ -580,11 +597,57 @@ export class SlotRegistry extends Service {
       copyUnique('prop', props, contribution.props, finalProps, name => name)
     }
     this._rootBinding = { key: undefined, hooks, keyedHooks, props }
+    this.warnWithdrawnRootSeats(previous)
+    this.publishRosterEpoch()
     for (const listener of [...this._rootListeners]) {
       try {
         listener()
       } catch (error) {
         console.error('root standard-source subscriber failed:', error)
+      }
+    }
+  }
+
+  /**
+   * Name every root standard seat the new roster withdrew. A withdrawal is not
+   * a load error — a provider unloading for an HMR rebuild drops its seats
+   * before the replacement registers — but consumers keep rendering meanwhile,
+   * so the diagnostic names the prop that fails. Rendering retries once the
+   * seat returns (the epoch moves with this publish).
+   */
+  private warnWithdrawnRootSeats(previous: StandardSourceBinding): void {
+    const withdrawn = (
+      kind: 'hook' | 'keyed hook' | 'prop',
+      before: Readonly<Record<string, unknown>>,
+      after: Readonly<Record<string, unknown>>,
+    ): void => {
+      for (const name of Object.keys(before)) {
+        if (Object.hasOwn(after, name)) continue
+        const seat = kind === 'prop' ? name : standardHookPropName(name)
+        console.warn(
+          `root standard source withdrew ${kind} '${name}' (rendered as ${seat}): consumers rendering on it crash until it returns; a seat that never returns keeps its crash face`,
+        )
+      }
+    }
+    withdrawn('hook', previous.hooks, this._rootBinding.hooks)
+    withdrawn('keyed hook', previous.keyedHooks, this._rootBinding.keyedHooks)
+    withdrawn('prop', previous.props, this._rootBinding.props)
+  }
+
+  /**
+   * Advance the roster epoch after a standard-source roster is authoritative —
+   * the root binding, or one scope adapter's binding rebuild. The core owns the
+   * counter and retires abdications from earlier epochs before subscribers read
+   * the new projection, so a re-render both re-projects retired entries and
+   * resets contained crash faces.
+   */
+  private publishRosterEpoch(): void {
+    this._core.advanceRosterEpoch()
+    for (const listener of [...this._rosterEpochListeners]) {
+      try {
+        listener()
+      } catch (error) {
+        console.error('roster-epoch subscriber failed:', error)
       }
     }
   }

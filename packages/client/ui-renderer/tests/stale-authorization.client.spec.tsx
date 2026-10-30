@@ -35,6 +35,7 @@ function makeHost() {
   }
   const sessionAdapter: SlotScopeAdapter = {
     current: bindingSource,
+    rosterRevision: { getSnapshot: () => 0, subscribe: () => () => {} },
     bindingSource: () => bindingSource,
   }
   const bump = (key: string) => {
@@ -65,6 +66,7 @@ function makeHost() {
     factoryOf: () => undefined,
     isFactoryLive: () => false,
     root: bindingSource,
+    rosterEpoch: { getSnapshot: () => 0, subscribe: () => () => {} },
     scopeRevision: { getSnapshot: () => 0, subscribe: () => () => {} },
     scope: () => sessionAdapter,
   }

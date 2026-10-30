@@ -303,6 +303,20 @@ export class UiSession extends Service {
       return () => { this.statusListeners.delete(listener) }
     },
   }
+  private rosterRevisionValue = 0
+  private readonly rosterRevisionListeners = new Set<() => void>()
+  /**
+   * Scope-level standard-source roster revision. Advanced after every binding
+   * rebuild, including a provider withdrawal, so the registry retries contained
+   * crashes on the shared roster epoch.
+   */
+  private readonly rosterRevisionSource: HostObservable<number> = {
+    getSnapshot: () => this.rosterRevisionValue,
+    subscribe: (listener) => {
+      this.rosterRevisionListeners.add(listener)
+      return () => { this.rosterRevisionListeners.delete(listener) }
+    },
+  }
   /** Renderer-facing adapter for `session` and `session-maybe` scopes. */
   readonly adapter: SlotScopeAdapter
 
@@ -319,6 +333,7 @@ export class UiSession extends Service {
     this.current = createBindingSource(this.absent.value)
     this.adapter = {
       current: this.current,
+      rosterRevision: this.rosterRevisionSource,
       bindingSource: target => this.bindingSource(target),
       renderArea: renderSessionArea,
     }
@@ -417,6 +432,7 @@ export class UiSession extends Service {
   }
 
   private rebuildBindings(): void {
+    const previousRoster = this.absent.value
     const absent = this.materializeAbsent()
     const updates = [...this.bindings.values].map(record => ({
       source: record.source,
@@ -424,11 +440,46 @@ export class UiSession extends Service {
     }))
     this.absent.value = absent
     for (const { source, value } of updates) source.value = value
+    this.warnWithdrawnSeats(previousRoster, absent)
     notifySubscribers(this.absent.listeners, '[ui-session] absent binding')
     for (const { source } of updates) {
       notifySubscribers(source.listeners, '[ui-session] Session binding')
     }
     this.publishMain()
+    this.publishRosterRevision()
+  }
+
+  /**
+   * Name every Session standard seat the rebuilt roster withdrew. A provider
+   * unloading for an HMR rebuild drops its seats before the replacement
+   * registers, while consumers keep rendering; the registry retries those
+   * crashes on the roster revision this rebuild publishes.
+   * @param previous - published binding before the rebuild, including its absent projection.
+   * @param next - published binding after the rebuild, including its absent projection.
+   */
+  private warnWithdrawnSeats(previous: StandardSourceBinding, next: StandardSourceBinding): void {
+    const withdrawn = (
+      kind: string,
+      before: Readonly<Record<string, unknown>>,
+      after: Readonly<Record<string, unknown>>,
+      seatOf: (name: string) => string,
+    ): void => {
+      for (const name of Object.keys(before)) {
+        if (Object.hasOwn(after, name)) continue
+        console.warn(
+          `Session standard source withdrew ${kind} '${name}' (rendered as ${seatOf(name)}): consumers rendering on it crash until it returns; a seat that never returns keeps its crash face`,
+        )
+      }
+    }
+    withdrawn('hook', previous.hooks, next.hooks, standardHookPropName)
+    withdrawn('keyed hook', previous.keyedHooks, next.keyedHooks, standardHookPropName)
+    withdrawn('prop', previous.props, next.props, name => name)
+  }
+
+  /** Publish one scope-roster revision after the new binding is authoritative. */
+  private publishRosterRevision(): void {
+    this.rosterRevisionValue += 1
+    notifySubscribers(this.rosterRevisionListeners, '[ui-session] roster revision')
   }
 
   private sourceFor(owner: SessionBinding): BindingSource {

@@ -37,6 +37,7 @@ async function bench() {
   }
   const adapter: SlotScopeAdapter = {
     current,
+    rosterRevision: { getSnapshot: () => 0, subscribe: () => () => {} },
     bindingSource: () => current,
   }
   slots.installScope('session', adapter)

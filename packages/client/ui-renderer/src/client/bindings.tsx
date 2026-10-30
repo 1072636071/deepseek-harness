@@ -177,6 +177,19 @@ const absentKeyedHook: KeyedSnapshotHook = (keyOrSelector, second, equal) => {
   return observableHook(absentSource)(call.selector ?? identity, call.equal)
 }
 
+/**
+ * Subscribe the calling component to the standard-source roster epoch. Both
+ * axes advance it — a root binding publish and every installed scope adapter's
+ * roster revision — so a contained crash caused by a momentarily withdrawn
+ * seat retries when its roster republishes; a healthy render only re-renders,
+ * it never remounts.
+ * @returns the current roster epoch.
+ */
+export function useRosterEpoch(): number {
+  const host = useHost()
+  return observableHook(host.rosterEpoch)(value => value)
+}
+
 /** Subscribe the tree to the atomically assembled root standard-source roster. */
 export function RootStandardProvider({ children }: { children: ReactNode }) {
   const host = useHost()

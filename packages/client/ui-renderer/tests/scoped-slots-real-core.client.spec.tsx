@@ -41,6 +41,7 @@ function hostOver(core: SlotCore): SlotRendererHost {
   }
   const sessionAdapter: SlotScopeAdapter = {
     current: bindingSource,
+    rosterRevision: { getSnapshot: () => 0, subscribe: () => () => {} },
     bindingSource: () => bindingSource,
   }
   return {
@@ -60,6 +61,7 @@ function hostOver(core: SlotCore): SlotRendererHost {
     factoryOf: name => core.factory(name),
     isFactoryLive: definition => core.isFactoryLive(definition),
     root: bindingSource,
+    rosterEpoch: { getSnapshot: () => 0, subscribe: () => () => {} },
     scopeRevision: { getSnapshot: () => 0, subscribe: () => () => {} },
     scope: () => sessionAdapter,
   }

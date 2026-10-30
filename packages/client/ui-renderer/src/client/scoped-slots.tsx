@@ -15,7 +15,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-slots'
 import {
   HostContext, RootStandardProvider, ScopeBindingProvider, ScopeProvider,
-  keyedObservableHook, maybeObservableHook, observableHook, useHost, useRootBinding,
+  keyedObservableHook, maybeObservableHook, observableHook, useHost, useRosterEpoch, useRootBinding,
   useScopeBinding,
 } from './bindings.tsx'
 import { SlotAssemblyError } from './errors.ts'
@@ -392,6 +392,31 @@ function sessionGenerationKeyOf(binding: ScopedStandardSourceBinding): number {
   return key
 }
 
+/** Containment state shared by both crash boundaries. */
+interface EpochRetryState {
+  failed: boolean
+  /** Roster epoch the current failed/healthy state belongs to. */
+  epoch: number
+}
+
+/**
+ * Retry policy shared by both crash boundaries: the roster epoch moving means
+ * a root or scope standard seat may be back, so a contained failure retries. The
+ * new epoch is recorded before the retried render, which keeps a crash in that
+ * render from resetting again on the next pass (no crash loop). A healthy
+ * boundary keeps `failed: false`, so it only re-renders at the same identity.
+ * @param props - boundary props carrying the current roster epoch.
+ * @param state - boundary state from the previous pass.
+ * @returns the reset state, or null when the epoch did not move.
+ */
+function retryOnEpochChange(
+  props: { epoch: number },
+  state: EpochRetryState,
+): EpochRetryState | null {
+  if (props.epoch === state.epoch) return null
+  return { failed: false, epoch: props.epoch }
+}
+
 /**
  * Per-entry isolation: one registrant crashing (component render or inject
  * factory) must not take down siblings. Assembly errors (missing providers)
@@ -401,14 +426,28 @@ function sessionGenerationKeyOf(binding: ScopedStandardSourceBinding): number {
  * re-renders onto the cell's next survivor, and this boundary's crash face
  * only shows until that re-render lands (permanently once the cell is dry —
  * the outlet then owns the crash face).
+ *
+ * A roster epoch change is a retry, not a remount: a root or scope standard
+ * seat withdrawn for one rebuild (HMR teardown) is expected to return, so its
+ * consumer crash must be retried (see {@link retryOnEpochChange}).
  */
 class SlotErrorBoundary extends Component<
-  { slotKey: string; anchor?: SlotAnchorTag; onEntryError: (error: unknown) => void; children: ReactNode }, { failed: boolean }
+  {
+    slotKey: string
+    anchor?: SlotAnchorTag
+    epoch: number
+    onEntryError: (error: unknown) => void
+    children: ReactNode
+  },
+  EpochRetryState
 > {
-  override state = { failed: false }
+  override state = { failed: false, epoch: this.props.epoch }
   static getDerivedStateFromError(error: unknown): { failed: boolean } {
     if (error instanceof SlotAssemblyError) throw error
     return { failed: true }
+  }
+  static getDerivedStateFromProps(props: { epoch: number }, state: EpochRetryState): EpochRetryState | null {
+    return retryOnEpochChange(props, state)
   }
   override componentDidCatch(error: unknown): void {
     console.error(`slot entry crashed in '${this.props.slotKey}':`, error)
@@ -421,15 +460,28 @@ class SlotErrorBoundary extends Component<
   }
 }
 
-/** Contain one Factory occurrence without retiring the shared definition. */
+/**
+ * Contain one Factory occurrence without retiring the shared definition. The
+ * roster epoch retries a crash caused by a withdrawn root or scope standard
+ * seat; the occurrence keeps its element identity and local state when it heals.
+ */
 /* jscpd:ignore-start */
 class FactoryErrorBoundary extends Component<
-  { name: string; onEntryError: (error: unknown) => void; children: ReactNode }, { failed: boolean }
+  {
+    name: string
+    epoch: number
+    onEntryError: (error: unknown) => void
+    children: ReactNode
+  },
+  EpochRetryState
 > {
-  override state = { failed: false }
+  override state = { failed: false, epoch: this.props.epoch }
   static getDerivedStateFromError(error: unknown): { failed: boolean } {
     if (error instanceof SlotAssemblyError) throw error
     return { failed: true }
+  }
+  static getDerivedStateFromProps(props: { epoch: number }, state: EpochRetryState): EpochRetryState | null {
+    return retryOnEpochChange(props, state)
   }
   override componentDidCatch(error: unknown): void {
     console.error(`slot factory occurrence crashed in '${this.props.name}':`, error)
@@ -812,6 +864,7 @@ function useFactorySlotRuntime(name: string, fallback: FC<InjectedProps>): FC<In
       const current = useContext(FactoryOccurrenceContext)
       const localScopeBinding = useScopeBinding()
       const localMaybeEpoch = useMaybeIncarnation(localScopeBinding)
+      const epoch = useRosterEpoch()
       if (!host.isFactoryLive(definition)) {
         throw new StaleAuthorizationError(`local slot '${name}' from a disposed Factory`)
       }
@@ -840,6 +893,7 @@ function useFactorySlotRuntime(name: string, fallback: FC<InjectedProps>): FC<In
         <FactoryErrorBoundary
           key={`${definition.name}:${name}:${localScopeIdentity}`}
           name={`${definition.name}:${name}`}
+          epoch={epoch}
           onEntryError={(error) => { host.reportFactoryError(definition.name, localOwner, error) }}
         >
           <Selected {...provided} {...localProps} />
@@ -991,6 +1045,7 @@ function FactoryOutlet({ name, inputProps, slots: selected = EMPTY_FACTORY_SELEC
     () => host.getFactoryVersion(name),
   )
   const definition = host.factoryOf(name)
+  const epoch = useRosterEpoch()
   const nextAncestors = useMemo(() => new Set(ancestors).add(name), [ancestors, name])
   if (definition === undefined) return <>{fallback ?? null}</>
   if (ancestors.has(name)) throw new SlotOwnershipError(`recursive render of factory '${name}'`)
@@ -1010,6 +1065,7 @@ function FactoryOutlet({ name, inputProps, slots: selected = EMPTY_FACTORY_SELEC
     <FactoryErrorBoundary
       key={`${name}:${version}:${scopeIdentity}`}
       name={name}
+      epoch={epoch}
       onEntryError={(error) => { host.reportFactoryError(name, definition, error) }}
     >
       <FactoryAncestryContext.Provider value={nextAncestors}>
@@ -1026,7 +1082,7 @@ function FactoryOutlet({ name, inputProps, slots: selected = EMPTY_FACTORY_SELEC
   )
 }
 
-function StrictSessionEntry({ slotKey, anchor, entry, ownerProps, slotInjected, hookContext, hasHookContext, onEntryError }: {
+function StrictSessionEntry({ slotKey, anchor, entry, ownerProps, slotInjected, hookContext, hasHookContext, onEntryError, epoch }: {
   slotKey: string
   anchor: SlotAnchorTag
   entry: StoredEntry
@@ -1035,6 +1091,7 @@ function StrictSessionEntry({ slotKey, anchor, entry, ownerProps, slotInjected, 
   hookContext: unknown
   hasHookContext: boolean
   onEntryError: (error: unknown) => void
+  epoch: number
 }) {
   const binding = useScopeBinding()
   if (binding.key === undefined) {
@@ -1044,7 +1101,13 @@ function StrictSessionEntry({ slotKey, anchor, entry, ownerProps, slotInjected, 
   // Per-session remount rides this key; per-entry remount rides the outer
   // element's entry-identity key (the outlet's guarded() call).
   return (
-    <SlotErrorBoundary slotKey={slotKey} anchor={anchor} key={sessionGenerationKeyOf(scopedBinding)} onEntryError={onEntryError}>
+    <SlotErrorBoundary
+      slotKey={slotKey}
+      anchor={anchor}
+      key={sessionGenerationKeyOf(scopedBinding)}
+      epoch={epoch}
+      onEntryError={onEntryError}
+    >
       <SessionEntry
         entry={entry}
         ownerProps={ownerProps}
@@ -1081,6 +1144,10 @@ function SlotOutlet({ slotKey, ownerProps, opts, declaredInline }: {
   // Locale revision tick: a locale switch re-renders every outlet, and entry
   // bodies re-derive their `t` seat at the new revision (fresh identity).
   useLocaleRevision(host.locale)
+  // Roster epoch tick: entries retired by a crash caused by a withdrawn root
+  // or scope standard seat re-enter this projection, and a crashed chain entry
+  // retries. A healthy subtree re-renders at the same identity.
+  const epoch = useRosterEpoch()
   const scopeBinding = useScopeBinding()
   const spec = host.specOf(slotKey)
   // Retained elements keep their declaration's anchor after unload, but never
@@ -1094,7 +1161,7 @@ function SlotOutlet({ slotKey, ownerProps, opts, declaredInline }: {
   // never flickers with registration churn.
   return (
     <Anchor data-slot={slotKey} style={ANCHOR_STYLE}>
-      {spec === undefined ? null : renderOutletContent(host, slotKey, ownerProps, opts, scopeBinding, spec)}
+      {spec === undefined ? null : renderOutletContent(host, slotKey, ownerProps, opts, scopeBinding, spec, epoch)}
     </Anchor>
   )
 }
@@ -1107,6 +1174,7 @@ function renderOutletContent(
   opts: (RenderOpts & ChainRenderOpts) | undefined,
   scopeBinding: StandardSourceBinding,
   spec: SlotSpec<SlotEntryDef>,
+  epoch: number,
 ): ReactNode {
   const Anchor = spec.inline === true ? 'span' : 'div'
   if (spec.kind === 'chain' && opts?.fallbackOnly === true) {
@@ -1142,11 +1210,12 @@ function renderOutletContent(
           hookContext={hookContext}
           hasHookContext={hasHookContext}
           onEntryError={onEntryError}
+          epoch={epoch}
           key={key}
         />
       )
       : (
-        <SlotErrorBoundary slotKey={slotKey} anchor={Anchor} key={key} onEntryError={onEntryError}>
+        <SlotErrorBoundary slotKey={slotKey} anchor={Anchor} key={key} epoch={epoch} onEntryError={onEntryError}>
           {spec.scope === 'session-maybe'
             ? (
               <SessionMaybeEntry
@@ -1279,6 +1348,9 @@ function RootOutlet({ ownerProps }: { ownerProps: object }) {
     () => host.getVersion('root'),
   )
   useLocaleRevision(host.locale)
+  // Roster epoch tick: a root frame retired by a crash caused by a withdrawn
+  // seat renders again once its roster republishes.
+  const epoch = useRosterEpoch()
   const entry = host.entriesOfSlot('root')[0]
   if (!entry) {
     // Registrations exist but every one abdicated: the shadowing collapse ran
@@ -1294,6 +1366,7 @@ function RootOutlet({ ownerProps }: { ownerProps: object }) {
       <SlotErrorBoundary
         slotKey="root"
         key={entryKeyOf(entry)}
+        epoch={epoch}
         onEntryError={(error) => { host.reportEntryError('root', entry, error, { abdicate: true }) }}
       >
         <RootEntry

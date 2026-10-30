@@ -986,7 +986,11 @@ export type LiveCompositionNode = LiveSlotNode | LiveFactoryNode
  * batch per microtask, so N same-tick mutations produce one notification per
  * touched key. Entry crash reports ({@link SlotCore.reportEntryError}) ride
  * the same mutation channel when they abdicate, then notify
- * {@link SlotCore.onEntryError} synchronously.
+ * {@link SlotCore.onEntryError} synchronously. Abdications belong to the root
+ * roster epoch ({@link SlotCore.advanceRosterEpoch}): a crash caused by a seat
+ * that a provider withdrew for one rebuild is retried once that roster
+ * republishes. The root binding and every installed scope adapter advance the
+ * same counter.
  */
 export class SlotCore {
   private records = new Map<string, SlotRecord>()
@@ -1000,12 +1004,16 @@ export class SlotCore {
   private flushScheduled = false
   /**
    * Entries retired by an abdicating crash report
-   * ({@link SlotCore.reportEntryError}): excluded from
-   * {@link SlotCore.entriesOfSlot} projections for the rest of their
-   * registration's life, while the registration itself stays on the ledger
-   * (disposal authority remains with the registrant).
+   * ({@link SlotCore.reportEntryError}), keyed by the root roster epoch they
+   * were reported under. A record excludes its entry from
+   * {@link SlotCore.entriesOfSlot} projections only while
+   * {@link SlotCore.rosterEpoch} still equals that value; the registration
+   * itself stays on the ledger either way (disposal authority remains with the
+   * registrant).
    */
-  private abdicated = new WeakSet<StoredEntry>()
+  private abdicated = new WeakMap<StoredEntry, number>()
+  /** Current roster epoch; only {@link SlotCore.advanceRosterEpoch} writes it. */
+  private rosterEpochValue = 0
   private entryErrorListeners
     = new Set<(key: string, registration: StoredEntry | StoredFactory, error: unknown, info: { abdicated: boolean }) => void>()
 
@@ -1361,7 +1369,7 @@ export class SlotCore {
     const heads: StoredEntry[] = []
     const seenCells = new Set<string | undefined>()
     for (const entry of rec.entries) {
-      if (this.abdicated.has(entry)) continue
+      if (this.isAbdicated(entry)) continue
       // Single-kind entries all share the one undefined cell.
       const cell = kind === 'keyed' ? entry.options.key : kind === 'list' ? entry.options.id : undefined
       if (seenCells.has(cell)) continue
@@ -1369,6 +1377,11 @@ export class SlotCore {
       heads.push(entry)
     }
     return heads
+  }
+
+  /** Whether the entry's abdication record still applies to the current root epoch. */
+  private isAbdicated(entry: StoredEntry): boolean {
+    return this.abdicated.get(entry) === this.rosterEpochValue
   }
 
   /**
@@ -1527,12 +1540,40 @@ export class SlotCore {
   }
 
   /**
+   * Read the roster epoch. Abdication records are compared against it, so a
+   * caller can tell whether a crash still retires its entry.
+   * @returns the current epoch.
+   */
+  rosterEpoch(): number {
+    return this.rosterEpochValue
+  }
+
+  /**
+   * Advance the roster epoch after one published standard-source roster. Both
+   * axes advance it — the root binding rebuild and every installed scope
+   * adapter's roster revision — so the core owns the only counter. An
+   * abdication recorded under an earlier epoch stops excluding its entry, so a
+   * crash caused by a momentarily withdrawn provider (an HMR rebuild) is
+   * retried once the roster republishes.
+   * @returns the new epoch.
+   */
+  advanceRosterEpoch(): number {
+    this.rosterEpochValue += 1
+    return this.rosterEpochValue
+  }
+
+  /**
    * Renderer crash report from an entry boundary. Always notifies
    * {@link SlotCore.onEntryError} listeners; with `info.abdicate` set (the
    * shadowing kinds — single/keyed/list) it first retires the entry from its
-   * cell, one-shot: the record's version bumps through the ordinary mutation
-   * channel so outlets re-project onto the cell's next survivor, and a
-   * repeat abdicating report no-ops entirely. Chain crashes report with
+   * cell for the current root roster epoch, one-shot: the record's version
+   * bumps through the ordinary mutation channel so outlets re-project onto the
+   * cell's next survivor, and a repeat abdicating report under the same epoch
+   * no-ops entirely. {@link SlotCore.advanceRosterEpoch} retires the record, so
+   * the entry participates in rendering again. The record belongs to the epoch
+   * current at report time: a report that lands after the roster already
+   * recovered keeps the entry retired until the next advance, never forever.
+   * Chain crashes report with
    * `abdicate: false` — election alternatives resolve at select time, so the
    * entry keeps its cell and only the notification fires. The registration
    * itself stays on the ledger either way — raw {@link SlotCore.entries}
@@ -1544,8 +1585,8 @@ export class SlotCore {
    */
   reportEntryError(key: string, entry: StoredEntry, error: unknown, info: { abdicate: boolean }): void {
     if (info.abdicate) {
-      if (this.abdicated.has(entry)) return
-      this.abdicated.add(entry)
+      if (this.isAbdicated(entry)) return
+      this.abdicated.set(entry, this.rosterEpochValue)
       const rec = this.records.get(key)
       if (rec !== undefined) this.markDirty(key, rec)
     }

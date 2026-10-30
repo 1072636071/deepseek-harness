@@ -402,3 +402,58 @@ describe('subscription API', () => {
     expect(keys).toHaveLength(1)
   })
 })
+
+describe('root roster epoch and entry abdication', () => {
+  /** Mount the frame and take the one entry of a declared child slot. */
+  function abdicationBench() {
+    const core = new SlotCore()
+    mountFrame(core)
+    const dispose = core.register({ name: 'test.single' }, Comp)
+    const entry = core.entries('test.single')[0]
+    if (entry === undefined) throw new Error('fixture: no registered entry')
+    const reported = vi.fn()
+    core.onEntryError(reported)
+    return { core, dispose, entry, reported }
+  }
+
+  it('retires a crashed entry until the root roster epoch advances, then retries it', () => {
+    const { core, entry, reported } = abdicationBench()
+    expect(core.rosterEpoch()).toBe(0)
+
+    core.reportEntryError('test.single', entry, new Error('boom'), { abdicate: true })
+    expect(core.entriesOfSlot('test.single')).toHaveLength(0)
+    expect(reported).toHaveBeenCalledWith('test.single', entry, expect.any(Error), { abdicated: true })
+
+    // Reading the epoch is not a roster change, and a repeat report under the
+    // same epoch stays a no-op.
+    expect(core.rosterEpoch()).toBe(0)
+    core.reportEntryError('test.single', entry, new Error('boom'), { abdicate: true })
+    expect(core.entriesOfSlot('test.single')).toHaveLength(0)
+    expect(reported).toHaveBeenCalledTimes(1)
+
+    // Advancing retires the old grounds for abdication.
+    expect(core.advanceRosterEpoch()).toBe(1)
+    expect(core.entriesOfSlot('test.single')).toEqual([entry])
+
+    // The counter only advances, so a further publish keeps the entry.
+    expect(core.advanceRosterEpoch()).toBe(2)
+    expect(core.entriesOfSlot('test.single')).toEqual([entry])
+
+    // A fresh crash under the current epoch retires the entry again, and the
+    // next advance re-admits it.
+    core.reportEntryError('test.single', entry, new Error('again'), { abdicate: true })
+    expect(core.entriesOfSlot('test.single')).toHaveLength(0)
+    expect(reported).toHaveBeenCalledTimes(2)
+    core.advanceRosterEpoch()
+    expect(core.entriesOfSlot('test.single')).toEqual([entry])
+  })
+
+  it('keeps non-abdicating chain reports off the epoch axis', () => {
+    const { core, entry } = abdicationBench()
+
+    core.reportEntryError('test.single', entry, new Error('boom'), { abdicate: false })
+    expect(core.entriesOfSlot('test.single')).toEqual([entry])
+    core.advanceRosterEpoch()
+    expect(core.entriesOfSlot('test.single')).toEqual([entry])
+  })
+})

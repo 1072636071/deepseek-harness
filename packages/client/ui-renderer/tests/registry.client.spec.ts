@@ -656,6 +656,7 @@ describe('host face', () => {
     const source = { getSnapshot: () => absent, subscribe: () => () => undefined }
     const adapter = {
       current: source,
+      rosterRevision: { getSnapshot: () => 0, subscribe: () => () => undefined },
       bindingSource: () => source,
     }
     const changed = vi.fn()
@@ -675,6 +676,103 @@ describe('host face', () => {
     expect(host.scopeRevision.getSnapshot()).toBe(2)
     expect(changed).toHaveBeenCalledTimes(2)
     expect(host.scope('session')).toBeUndefined()
+  })
+
+  it('advances the root roster epoch on every published roster and retries abdicated entries', async () => {
+    const bench = await boot()
+    const host = captureHost(bench, { 't.rows': { kind: 'list', scope: 'root' } })
+    const disposeEntry = bench.erased.register({ name: 't.rows', id: 'a' }, C)
+    const [entry] = host.entriesOf('t.rows')
+    const moved = vi.fn()
+    host.rosterEpoch.subscribe(moved)
+    expect(host.rosterEpoch.getSnapshot()).toBe(0)
+
+    const source = { getSnapshot: () => 1, subscribe: () => () => undefined }
+    bench.svc.provideRoot({ hooks: { feature: source } })
+    expect(host.rosterEpoch.getSnapshot()).toBe(1)
+    expect(moved).toHaveBeenCalledOnce()
+
+    host.reportEntryError('t.rows', entry as never, new Error('boom'), { abdicate: true })
+    expect(bench.svc.entriesOfSlot('t.rows')).toHaveLength(0)
+
+    // The retry axis is the publish, not a name diff: an equal-shaped roster
+    // that dropped nothing still reopens the crashed entry.
+    bench.svc.provideRoot({ keyedHooks: { other: () => source } })
+    expect(host.rosterEpoch.getSnapshot()).toBe(2)
+    expect(bench.svc.entriesOfSlot('t.rows')).toHaveLength(1)
+
+    disposeEntry()
+  })
+
+  it('advances the roster epoch from a scope adapter revision and retries its abdicated entries', async () => {
+    const bench = await boot()
+    const host = captureHost(bench, { 't.panel': { kind: 'single', scope: 'session' } })
+    const absent = { key: undefined, hooks: {}, keyedHooks: {}, props: {} }
+    const source = { getSnapshot: () => absent, subscribe: () => () => undefined }
+    let revision = 0
+    const listeners = new Set<() => void>()
+    const rosterRevision = {
+      getSnapshot: () => revision,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener)
+        return () => { listeners.delete(listener) }
+      },
+    }
+    const owner = bench.ctx.plugin({
+      name: 'scope-roster-owner',
+      inject: ['slots'],
+      apply: (ctx: Context) => {
+        ctx.slots.installScope('session', { current: source, rosterRevision, bindingSource: () => source })
+      },
+    })
+    await owner.await()
+    const disposeEntry = bench.erased.register({ name: 't.panel' }, C)
+    const [entry] = host.entriesOf('t.panel')
+    const beforeScope = host.rosterEpoch.getSnapshot()
+    host.reportEntryError('t.panel', entry as never, new Error('boom'), { abdicate: true })
+    expect(bench.svc.entriesOfSlot('t.panel')).toHaveLength(0)
+
+    // Only the scope roster moved: its revision advances the same core epoch,
+    // so the retired entry returns without any root binding publish.
+    revision += 1
+    for (const listener of [...listeners]) listener()
+    expect(host.rosterEpoch.getSnapshot()).toBe(beforeScope + 1)
+    expect(bench.svc.entriesOfSlot('t.panel')).toHaveLength(1)
+
+    // The forwarding belongs to the scope install effect: uninstalling the
+    // adapter stops future revisions from moving the epoch.
+    await owner.dispose()
+    const afterUninstall = host.rosterEpoch.getSnapshot()
+    revision += 1
+    for (const listener of [...listeners]) listener()
+    expect(host.rosterEpoch.getSnapshot()).toBe(afterUninstall)
+    disposeEntry()
+  })
+
+  it('names each withdrawn root standard seat so the consumer crash is diagnosable', async () => {
+    const bench = await boot()
+    captureHost(bench)
+    const source = { getSnapshot: () => 1, subscribe: () => () => undefined }
+    const disposeHook = bench.svc.provideRoot({ hooks: { workspaces: source } })
+    const disposeKeyed = bench.svc.provideRoot({ keyedHooks: { resource: () => source } })
+    const disposeProp = bench.svc.provideRoot({ props: { ready: true } })
+    const stable = bench.svc.provideRoot({ hooks: { sessions: source } })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    disposeHook()
+    disposeKeyed()
+    disposeProp()
+    const messages = warn.mock.calls.map(call => call.join(' '))
+    expect(messages).toEqual(expect.arrayContaining([
+      expect.stringContaining('useWorkspaces'),
+      expect.stringContaining('useResource'),
+      expect.stringContaining("'ready'"),
+    ]))
+    for (const message of messages) expect(message).toContain('crash until it returns')
+    // Seats the new roster kept are not reported.
+    expect(messages.some(message => message.includes('useSessions'))).toBe(false)
+    stable()
+    warn.mockRestore()
   })
 })
 
@@ -850,7 +948,11 @@ describe('store instance axis', () => {
     const { bench, host } = await storeBench()
     const absent = { key: undefined, hooks: {}, keyedHooks: {}, props: {} }
     const source = { getSnapshot: () => absent, subscribe: () => () => undefined }
-    bench.svc.installScope('session', { current: source, bindingSource: () => source })
+    bench.svc.installScope('session', {
+      current: source,
+      rosterRevision: { getSnapshot: () => 0, subscribe: () => () => undefined },
+      bindingSource: () => source,
+    })
     const { handle, created } = fakeHandle()
     bench.erased.register({ name: 't.maybe', store: handle }, C)
     const [entry] = host.entriesOf('t.maybe')

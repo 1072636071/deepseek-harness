@@ -80,6 +80,7 @@ function makeHost() {
   })
   const sessionAdapter: SlotScopeAdapter = {
     current: absentBindingSource,
+    rosterRevision: observable(0),
     bindingSource: target => target === undefined ? absentBindingSource : bindingSources.get(target.sessionId)!,
     renderArea: (scopeBinding, { empty, children }) => scopeBinding.key === undefined
       ? <>{empty?.() ?? null}</>
@@ -104,6 +105,7 @@ function makeHost() {
     factoryOf: () => undefined,
     isFactoryLive: () => false,
     root,
+    rosterEpoch: observable(0),
     scopeRevision: observable(0),
     scope: () => sessionAdapter,
   }

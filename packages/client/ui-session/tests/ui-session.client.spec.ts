@@ -439,6 +439,30 @@ describe('UiSession bindings', () => {
     expect(sourceA.getSnapshot().props).not.toHaveProperty('neighbor')
   })
 
+  it('advances the scope roster revision and names withdrawn seats when a contribution unloads', () => {
+    const ctx = new Context()
+    const bench = createSessionsBench(ctx)
+    const service = createUiSession(ctx, bench)
+    const revision = service.adapter.rosterRevision
+    const changed = vi.fn()
+    revision.subscribe(changed)
+    const source = createSnapshotStore(1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const remove = service.provide({ hooks: ['feature'], resolve: () => ({ hooks: { feature: source } }) })
+    expect(revision.getSnapshot()).toBe(1)
+    expect(warn).not.toHaveBeenCalled()
+
+    remove()
+    expect(revision.getSnapshot()).toBe(2)
+    expect(changed).toHaveBeenCalledTimes(2)
+    const messages = warn.mock.calls.map(call => call.join(' '))
+    expect(messages.some(message => message.includes("withdrew hook 'feature'"))).toBe(true)
+    expect(messages.some(message => message.includes('useFeature'))).toBe(true)
+    expect(messages.some(message => message.includes('crash until it returns'))).toBe(true)
+    warn.mockRestore()
+  })
+
   it.each([
     ['hook', { resolve: () => ({ hooks: { surprise: createSnapshotStore(1) } }) }],
     ['keyed hook', { resolve: () => ({ keyedHooks: { surprise: () => createSnapshotStore(1) } }) }],

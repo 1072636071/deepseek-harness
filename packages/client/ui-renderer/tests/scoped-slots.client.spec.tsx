@@ -117,6 +117,7 @@ function makeHost() {
   })
   const sessionAdapter: SlotScopeAdapter = {
     current: currentBinding,
+    rosterRevision: observable(0),
     bindingSource: target => target === undefined ? absent : bindingSources.get(target.sessionId)!,
     renderArea: (binding, { empty, children }) => binding.key === undefined
       ? <>{empty?.() ?? null}</>
@@ -188,6 +189,7 @@ function makeHost() {
     factoryOf: () => undefined,
     isFactoryLive: () => false,
     root,
+    rosterEpoch: observable(0),
     scopeRevision,
     scope: () => activeScopeAdapter,
   }
@@ -1161,6 +1163,7 @@ describe('session-maybe adoption identity', () => {
       const source = observable<StandardSourceBinding>(binding)
       h.replaceScope({
         current: source,
+        rosterRevision: observable(0),
         bindingSource: () => source,
         renderArea: (_binding, { children }) => <>{children}</>,
       })

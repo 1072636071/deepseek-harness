@@ -99,6 +99,13 @@ export interface SlotScopeAdapter {
   /** Default binding inherited by scoped entries, including its absent projection. */
   readonly current: HostObservable<StandardSourceBinding>
   /**
+   * Monotonic revision of this scope's standard-source roster, advanced by the
+   * adapter owner after every published binding rebuild. The registry forwards
+   * each advance to the core's roster epoch, so a crash caused by a seat this
+   * scope withdrew is retried when the seat returns.
+   */
+  readonly rosterRevision: HostObservable<number>
+  /**
    * Resolve a stable observable for an explicit scope target or explicit absence.
    * @param target - domain-owned Provider target, or absence.
    * @returns the target's current standard-source binding.
@@ -154,19 +161,21 @@ export interface SlotRendererHost {
   entriesOf(key: string): readonly StoredEntry[]
   /**
    * Shadowing winners per cell for a key — the render read for single/keyed/
-   * list dispatch: the first live (non-abdicated) entry of each cell in
-   * priority order; chain keys pass through unchanged (election consumes
-   * every entry). Fresh array per call — a render-body read, not a uSES
-   * getSnapshot source.
+   * list dispatch: the first live entry of each cell in priority order; an
+   * abdication excludes its entry only for the current root roster epoch, so
+   * the next published roster re-admits a crash caused by a withdrawn seat.
+   * Chain keys pass through unchanged (election consumes every entry). Fresh
+   * array per call — a render-body read, not a uSES getSnapshot source.
    * @param key - slot key.
    * @returns the winning entry per occupied cell.
    */
   entriesOfSlot(key: string): readonly StoredEntry[]
   /**
    * Report an entry boundary crash. With `info.abdicate` (shadowing kinds)
-   * the entry retires from its cell, one-shot, so the next survivor renders;
-   * chain crashes report without abdicating. The registration stays on the
-   * ledger either way.
+   * the entry retires from its cell for the current root roster epoch, so the
+   * next survivor renders; an epoch advance retires the record and the entry
+   * participates again. Chain crashes report without abdicating. The
+   * registration stays on the ledger either way.
    * @param key - slot key the entry rendered under.
    * @param entry - the crashed entry.
    * @param error - the crash cause.
@@ -247,6 +256,16 @@ export interface SlotRendererHost {
   isFactoryLive(definition: StoredFactory): boolean
   /** Root standard data assembled from domain-owned contributions. */
   readonly root: HostObservable<StandardSourceBinding>
+  /**
+   * Monotonic standard-source roster epoch. Both roster axes publish it: the
+   * root binding rebuild, and every installed scope adapter's
+   * {@link SlotScopeAdapter.rosterRevision}. Contained crashes reset when it
+   * moves: a seat withdrawn for one rebuild (HMR teardown before the
+   * replacement registers) is expected to return, and its consumers must be
+   * retried when it does. Items retired by an abdicating crash report stop
+   * being excluded on the same signal.
+   */
+  readonly rosterEpoch: HostObservable<number>
   /** Monotonic source updated whenever the installed scope-adapter roster changes. */
   readonly scopeRevision: HostObservable<number>
   /**
