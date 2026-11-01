@@ -2,13 +2,13 @@
 
 本机 DeepSeek Harness 装的自研插件台账：本地目录、git 地址（双上游列两处）、升级 DSH 后的检查步骤。根 [AGENTS.md](../../AGENTS.md) 的约定条目「Locally linked DSH plugins」与 [CODEBUDDY.md](../../CODEBUDDY.md) 约定里的同名条目规定升级后必查本文件第 2 节列出的插件。
 
-数据截至 2026-10-30，取自 `C:\Users\jxc123\.dsh\profiles\web\package.json` 的 `dependencies`、`C:\Users\jxc123\.dsh\profiles\web\node_modules` 下的 junction 目标、各仓 `git remote -v`、npm 发布包的 `npm pack` 解包比对。
+数据截至 2026-11-01（宿主 rc.5 复查），取自 `C:\Users\jxc123\.dsh\profiles\web\package.json` 的 `dependencies`、`C:\Users\jxc123\.dsh\profiles\web\node_modules` 下的 junction 目标、各仓 `git remote -v`、npm 发布包的 `npm pack` 解包比对。
 
 ## 1. 范围与安装形态
 
 profile 只有 `web` 装了插件（`headless` 的依赖数为 0）。判据：`package.json` 依赖值以 `link:` 开头 = 自研本地直挂（第 2 节）；纯版本号 = npm 装机（第 3 节本队维护的 fork、第 5 节第三方）。
 
-8 个 `link:` 依赖各对应一个指向本地检出的 junction：`node_modules` 顶层 4 个（`dsh-agent-studio`、`dsh-providers-hub`、`dsh-web-ui-jx`、`win-shell-mcp`），`node_modules\@tdbm\` 作用域下 4 个（四个 `@tdbm/*`）。宿主基线版本（读自本检出的 `packages/*/*/package.json` 与 `vendor/*/package.json`）：`@deepseek-ai/cordis` 4.0.5、`@deepseek-ai/schemastery` 3.18.5、`@deepseek-ai/dsh-*` 0.2.1-rc.3。profile 的 `node_modules` 下没有 `@deepseek-ai` 作用域（宿主包由检出提供，见 `C:\Users\jxc123\.dsh\profiles\node_modules`），peer 对照要从检出取版本。
+8 个 `link:` 依赖各对应一个指向本地检出的 junction：`node_modules` 顶层 4 个（`dsh-agent-studio`、`dsh-providers-hub`、`dsh-web-ui-jx`、`win-shell-mcp`），`node_modules\@tdbm\` 作用域下 4 个（四个 `@tdbm/*`）。宿主基线版本（读自本检出的 `packages/*/*/package.json` 与 `vendor/*/package.json`）：`@deepseek-ai/cordis` 4.0.5、`@deepseek-ai/schemastery` 3.18.5、`@deepseek-ai/dsh-*` 0.2.1-rc.5（2026-11-01 合并上游 tag dsh-v0.2.1-rc.5；cordis/schemastery 未动）。profile 的 `node_modules` 下没有 `@deepseek-ai` 作用域（宿主包由检出提供，见 `C:\Users\jxc123\.dsh\profiles\node_modules`），peer 对照要从检出取版本。
 
 ## 2. link: 直挂本地检出（升级后逐台复查）
 
@@ -25,9 +25,9 @@ profile 只有 `web` 装了插件（`headless` 的依赖数为 0）。判据：`
 
 TencentDB-Agent-Memory 仓另配 remote `cnb` = <https://cnb.cool/hanjiangxue_xiaoxiao/my-zvec-grep.git>，是 zvec-grep 上游镜像（`mzg/` 子树的来源），不是这四个插件的上游。
 
-宿主判定插件兼容性的权威在 `packages/boot/app-boot/src/plugin-compatibility.ts`：manifest 声明 `engines.dsh` 时该范围单独决定、`peerDependencies` 被忽略，否则所有 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-*` peer 必须匹配，且预发布版本参与范围匹配（`semver.satisfies(runtimeVersion, range, { includePrerelease: true })`）。本机 8 台里 `dsh-agent-studio`（`engines.dsh= >=0.2.1-alpha.2`）与 `win-shell-mcp`（`engines.dsh= ^0.2.1-rc.2`）声明了 `engines.dsh`，其余六台没有 ⇒ 该两台的 peer 表不参与运行时判定；六台里 `dsh-providers-hub` 与 `dsh-web-ui-jx` 声明了版本区间、四台 `@tdbm/*` 用 `workspace:` 协议（按宿主运行时版本解析，见下表；判定由 semver 给出，每次升级后重跑第 4 节的对照脚本）。四台 `@tdbm/*` 的插件自身逻辑另由各自自带的 `node --test` 判定（2026-10-30 实测：idle 51、panel 60、lingshu-bootstrap 215、session-purge 80 全过），这些用例不加载宿主实现（session-purge 的 endpoint 用例用 `module.registerHooks` 把 `@deepseek-ai/schemastery` 替成本地 shim），不比对宿主版本。
+宿主判定插件兼容性的权威在 `packages/boot/app-boot/src/plugin-compatibility.ts`：manifest 声明 `engines.dsh` 时该范围单独决定、`peerDependencies` 被忽略，否则所有 `@deepseek-ai/dsh` 与 `@deepseek-ai/dsh-*` peer 必须匹配，且预发布版本参与范围匹配（`semver.satisfies(runtimeVersion, range, { includePrerelease: true })`）。本机 8 台里 `dsh-agent-studio`（`engines.dsh= >=0.2.1-alpha.2`）与 `win-shell-mcp`（`engines.dsh= ^0.2.1-rc.2`）声明了 `engines.dsh`，其余六台没有 ⇒ 该两台的 peer 表不参与运行时判定；六台里 `dsh-providers-hub` 与 `dsh-web-ui-jx` 声明了版本区间、四台 `@tdbm/*` 用 `workspace:` 协议（按宿主运行时版本解析，见下表；判定由 semver 给出，每次升级后重跑第 4 节的对照脚本）。四台 `@tdbm/*` 的插件自身逻辑另由各自自带的 `node --test` 判定（2026-11-01 实测：idle 51、lingshu-bootstrap 221、session-purge 80 全过；panel 60 用例 57 过 3 挂——`panel-core.test.js` 的 `clientFunctionBody()` 用 `indexOf('\n    }\n')` 定位函数体，本机 `core.autocrlf=true` 把 client.js 重签出成 CRLF（`git ls-files --eol` = `i/lf w/crlf`）致守卫失配，LF 副本三守卫全过，纯本地行尾问题，与宿主版本无关，修法已拍板（方案 a）：插件目录加 `.gitattributes` 强制 `*.js eol=lf`，client.js 按新规则重签出为 `i/lf w/lf`，npm test 60/60 全过），这些用例不加载宿主实现（session-purge 的 endpoint 用例用 `module.registerHooks` 把 `@deepseek-ai/schemastery` 替成本地 shim），不比对宿主版本。
 
-| 插件 | `engines.dsh`（有则单独决定） | 参与判定的 peer | 对宿主 dsh 0.2.1-rc.3 |
+| 插件 | `engines.dsh`（有则单独决定） | 参与判定的 peer | 对宿主 dsh 0.2.1-rc.5 |
 | --- | --- | --- | --- |
 | `dsh-agent-studio` | `>=0.2.1-alpha.2` | 不参与（被 `engines.dsh` 覆盖） | 满足 |
 | `win-shell-mcp` | `^0.2.1-rc.2` | 不参与（被 `engines.dsh` 覆盖） | 满足 |
@@ -85,7 +85,7 @@ for (const file of [...walk(join(checkout, 'packages'), 2), ...walk(join(checkou
   if (pkg.name && !host.has(pkg.name)) host.set(pkg.name, pkg.version)
 }
 
-const runtime = '0.2.1-rc.3'   // 宿主运行时版本，取 packages/boot/app-boot/package.json 的 version
+const runtime = '0.2.1-rc.5'   // 宿主运行时版本，取 packages/boot/app-boot/package.json 的 version
 const satisfies = (version, range) => semver.satisfies(version, range, { includePrerelease: true })
 
 const profile = JSON.parse(readFileSync(join(profileDir, 'package.json'), 'utf8'))
