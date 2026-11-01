@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-tool-workspace",
   "description": "Model-facing workspace listing tool (workspace_list) over the ctx.workspaceRegistry",
-  "version": "0.2.1-rc.3",
+  "version": "0.2.1-rc.5",
   "publishConfig": {
     "access": "public"
   },
