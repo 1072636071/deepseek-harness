@@ -7,10 +7,11 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Loader, { type ModuleLoaderV2 } from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import Storage from '@deepseek-ai/dsh-storage'
 import { DomainFacility } from '@deepseek-ai/dsh-storage-domain'
@@ -58,6 +59,7 @@ async function boot(): Promise<{ ctx: Context; root: string }> {
     '- name: test-storage-world',
     "- name: '@deepseek-ai/dsh-system-prompt'",
     "- name: '@deepseek-ai/dsh-tools'",
+    "- name: '@deepseek-ai/dsh-tool-executor-native'",
     "- name: '@deepseek-ai/dsh-workspace'",
     "- name: '@deepseek-ai/dsh-tool-workspace'",
     '',
@@ -72,16 +74,23 @@ async function boot(): Promise<{ ctx: Context; root: string }> {
     ['test-storage-world', TestStorageWorld],
     ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
     ['@deepseek-ai/dsh-tools', ToolRuntime],
+    ['@deepseek-ai/dsh-tool-executor-native', NativeToolExecutor],
     ['@deepseek-ai/dsh-workspace', WorkspaceRegistry],
     ['@deepseek-ai/dsh-tool-workspace', ToolWorkspace],
   ])
-  ctx.loader.internal = {
+  const internal: ModuleLoaderV2 = {
     version: 'v2',
+    loadCache: new Map(),
     async import(specifier: string) {
       if (!modules.has(specifier)) throw new Error(`unexpected Loader import: ${specifier}`)
       return modules.get(specifier)
     },
-  } as unknown as NonNullable<typeof ctx.loader.internal>
+    register(): never { throw new Error('unexpected module hook registration') },
+    getOrCreateModuleJob(): never { throw new Error('unexpected module job creation') },
+    resolveSync(): never { throw new Error('unexpected synchronous module resolution') },
+    load(): never { throw new Error('unexpected module load') },
+  }
+  ctx.loader.internal = internal
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(configPath).href } })
   await ctx.loader.await()
   for (const entry of ctx.loader.entries()) await entry.fiber?.await()
@@ -99,12 +108,17 @@ describe('tool-workspace real Loader composition through cordis.yml', () => {
     await mkdir(directory)
     await booted.ctx.workspaceRegistry.create(directory, 'Project')
 
-    const result = await booted.ctx.tools.execute({
+    const batch = await booted.ctx.tools.execute({
       signal: new AbortController().signal,
-      callId: ToolCallId('loader-composition'),
-      name: 'workspace_list',
-      arguments: {},
+      calls: [{
+        type: 'tool-call',
+        id: ToolCallId('loader-composition'),
+        name: 'workspace_list',
+        arguments: '{}',
+      }],
     })
+    const result = batch.results[0]?.result
+    if (result === undefined) throw new Error('expected one tool result')
     expect(result.isError).toBe(false)
     expect(text(result)).toBe(`Project  ${await realpath(directory)}  (0 sessions)`)
   }, 30_000)

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-api-workspace-folders",
   "description": "User-defined Workspace folders stored apart from the Workspace registry",
-  "version": "0.2.1-rc.5",
+  "version": "0.2.2-alpha.3",
   "publishConfig": {
     "access": "public"
   },
@@ -34,6 +34,7 @@
       "types": "./lib/typert.remote-client.d.ts",
       "default": "./lib/typert.remote-client.js"
     },
+    "./locale/*.json": "./locale/*.json",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
@@ -58,7 +59,8 @@
     "lib/typert.host.js",
     "lib/typert.host.d.ts",
     "lib/typert.remote-client.js",
-    "lib/typert.remote-client.d.ts"
+    "lib/typert.remote-client.d.ts",
+    "locale/*.json"
   ],
   "license": "MIT",
   "dependencies": {

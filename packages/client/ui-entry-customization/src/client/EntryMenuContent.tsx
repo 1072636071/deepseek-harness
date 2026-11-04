@@ -1,9 +1,9 @@
-/** Sidebar panel rows with pin toggles, folded Conversation Views, and the plugin discovery and Creator actions. */
+/** Sidebar panel rows with pin toggles, folded Conversation Views, plugin discovery while reachable, and creation. */
 import {
   IconCheckOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconPluginPinwheelOutlineRegular, IconPlusOutlineRegular,
   MenuItemButton,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SidebarPanelActionEntry } from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import css from './EntryMenu.module.css'
 
@@ -14,6 +14,10 @@ export type EntryRegion = 'sidebar' | 'conversation' | 'rightbar'
 export interface EntryMenuInjected {
   /** Region of this registration; selects analytics attributes and the Creator prompt. */
   readonly region: EntryRegion
+  readonly hooks: {
+    /** Whether the Plugins page navigation service is present; the discovery row shows only while it is. */
+    readonly pluginNavigation: HostObservable<boolean>
+  }
   /** Open the Plugins main list. */
   readonly browsePlugins: () => void
   /** Start a Creator draft with this region's prompt without sending it. */
@@ -62,13 +66,15 @@ function PinToggle({ entry, onPinnedChange, t }: {
 /**
  * Render the region's More menu rows: the sidebar lists every global panel with a pin toggle, the
  * Conversation menu lists folded Views without pin controls, and the guide menu lists neither.
+ * Discovery appears only while the Plugins navigation service is present.
  * @param props - Owner dismissal and pin callbacks, injected actions, and localized copy.
  * @returns Menu rows for the region's More menu.
  */
 export function EntryMenuContent({
-  entries, onOpen, onPinnedChange, region, onDismiss, browsePlugins, createPlugin, t,
+  entries, onOpen, onPinnedChange, region, onDismiss, usePluginNavigation, browsePlugins, createPlugin, t,
 }: EntryMenuContentProps) {
   const moreEntries = region === 'rightbar' ? [] : entries
+  const browsable = usePluginNavigation(present => present)
   return <>
     {moreEntries.map(entry => region === 'sidebar'
       ? (
@@ -78,11 +84,12 @@ export function EntryMenuContent({
         </div>
       )
       : <EntryRow key={entry.id} entry={entry} onOpen={onOpen} onDismiss={onDismiss} />)}
-    <MenuItemButton separatorBefore={moreEntries.length > 0} icon={<IconPluginPinwheelOutlineRegular size={16} />}
+    {browsable && <MenuItemButton separatorBefore={moreEntries.length > 0} icon={<IconPluginPinwheelOutlineRegular size={16} />}
       onSelect={() => { onDismiss(); browsePlugins() }}>
       {t('install')}
-    </MenuItemButton>
-    <MenuItemButton icon={<IconPlusOutlineRegular size={16} />} onSelect={() => { onDismiss(); createPlugin() }}>
+    </MenuItemButton>}
+    <MenuItemButton icon={<IconPlusOutlineRegular size={16} />} separatorBefore={!browsable && moreEntries.length > 0}
+      onSelect={() => { onDismiss(); createPlugin() }}>
       {t('create')}
     </MenuItemButton>
   </>

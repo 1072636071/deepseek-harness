@@ -58,3 +58,6 @@ packages/experimental/webworker-runtime/src/**/*.d.ts.map
 # Local agent scratch: work product and local memory, never maintained references
 .scratch/
 .workbuddy/
+
+# Generated company-signed CUA release record.
+/packages/experimental/cua-macos/cua-helper.json

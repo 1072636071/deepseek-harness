@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it } from 'vitest'
-import { cleanup, fireEvent, render } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { en as commonEn, zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/index.ts'
 import { ContextMeter, type ContextMeterProps } from '../src/client/skeleton/ContextMeter.tsx'
@@ -73,11 +73,11 @@ describe('ContextMeter', () => {
       contextBreakdown: BREAKDOWN,
     })
     const trigger = view.getByRole('button', { name: '上下文已用 25%' })
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
     fireEvent.mouseEnter(trigger)
-    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(view.queryByRole('dialog')).not.toBeNull()
     fireEvent.mouseLeave(trigger)
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
   })
 
   it('pins the panel on click and releases the pin on a second click', () => {
@@ -90,14 +90,14 @@ describe('ContextMeter', () => {
     fireEvent.mouseEnter(trigger)
     fireEvent.click(trigger)
     fireEvent.mouseLeave(trigger)
-    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(view.queryByRole('dialog')).not.toBeNull()
     // A second click releases the pin; a click always happens while hovering,
     // so the panel stays on as the hover preview and follows the pointer out.
     fireEvent.mouseEnter(trigger)
     fireEvent.click(trigger)
-    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(view.queryByRole('dialog')).not.toBeNull()
     fireEvent.mouseLeave(trigger)
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
   })
 
   it('forgets the hover state while capacity is absent', () => {
@@ -110,17 +110,32 @@ describe('ContextMeter', () => {
     const view = render(<ContextMeter useProjection={(key: string) => values[key]} t={t} />)
     const trigger = view.getByRole('button', { name: '上下文已用 25%' })
     fireEvent.mouseEnter(trigger)
-    expect(view.container.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(view.queryByRole('dialog')).not.toBeNull()
     values = { contextPressure: { pressureTokens: 32_000 }, contextBreakdown: BREAKDOWN }
     view.rerender(<ContextMeter useProjection={(key: string) => values[key]} t={t} />)
     expect(view.container.textContent).toBe('')
+    expect(view.queryByRole('dialog')).toBeNull()
     values = {
       contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 },
       contextBreakdown: BREAKDOWN,
     }
     view.rerender(<ContextMeter useProjection={(key: string) => values[key]} t={t} />)
-    expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
     expect(view.getByRole('button', { name: '上下文已用 25%' }).getAttribute('aria-expanded')).toBe('false')
+  })
+
+  it('renders its reading tooltip outside the composer subtree', () => {
+    vi.useFakeTimers()
+    try {
+      const view = meter({ contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 } })
+      fireEvent.pointerEnter(view.getByRole('button', { name: '上下文已用 25%' }))
+      act(() => { vi.advanceTimersByTime(200) })
+      const tooltip = view.getByRole('tooltip')
+      expect(view.container.contains(tooltip)).toBe(false)
+      expect(document.body.contains(tooltip)).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('lets each locale own the headline word order around the reading', () => {

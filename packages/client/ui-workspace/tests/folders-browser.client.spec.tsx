@@ -8,14 +8,15 @@
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, contextMenuHook, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SessionListState, SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot, WorkspaceView, WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { WorkspaceFoldersSnapshot } from '@deepseek-ai/dsh-api-workspace-folders/client'
 import type { SessionStatus, SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
-import type { DirectoryFlowOwnerProps, WorkspaceBrowserProps } from '../src/client/contract/slots.ts'
+import type { DirectoryFlowOwnerProps, WorkspaceActionRequest, WorkspaceBrowserProps } from '../src/client/contract/slots.ts'
 import { createWorkspaceShortcutControls } from '../src/client/shortcuts.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
@@ -70,6 +71,12 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
   const store = createWorkspaceViewStore().create()
   store.actions.setGroupBy('folder')
   const props: WorkspaceBrowserProps = {
+    openWorkspaceMenu: vi.fn(),
+    useWorkspaceActionRequest: bindSnapshotSelector(createSnapshotStore<WorkspaceActionRequest | null>(null)),
+    settleWorkspaceAction: vi.fn(),
+    openSessionMenu: vi.fn(),
+    useContextMenuTarget: selector => selector(null),
+    useContextMenu: contextMenuHook(),
     useShortcuts: select => select([]),
     useWorkspaceShortcuts: bindSnapshotSelector(controls.state),
     requestSearch: controls.search,
@@ -79,7 +86,7 @@ function mount(overrides: Partial<WorkspaceBrowserProps> = {}) {
     requestSessionRename: controls.rename,
     wide: true,
     expandSidebar: vi.fn(),
-    useSessions: hook({ ids: [], byId: {}, projectionsBySession: {}, phase: 'ready' } as unknown as SessionListState),
+    useSessions: hook(sessionState([])),
     useSessionStatus: hook(noPendingInteraction),
     useSessionRetainInfo: () => undefined,
     usePanelInfo, useResource,
@@ -160,37 +167,21 @@ describe('WorkspaceBrowser folders', () => {
     expect(createFolder).toHaveBeenCalledWith('Research')
   })
 
-  it('moves a Workspace into a folder through its row menu', async () => {
-    const setFolderMembership = vi.fn(async () => undefined)
+  it('routes a Workspace row More gesture to the shared Workspace menu', () => {
+    const openWorkspaceMenu = vi.fn()
     mount({
+      openWorkspaceMenu,
       useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')])),
       useFolders: hook(folderState([
         { folderId: 'f1' as never, title: 'Work', workspaceIds: [], expanded: true, createdAt: '2026-01-01T00:00:00.000Z' },
       ])),
-      setFolderMembership,
     })
+    // The move submenu is a Workspace-menu contribution, so the row only
+    // opens the shared menu for this Workspace.
     fireEvent.click(screen.getByRole('button', { name: 'Workspace actions for Alpha' }))
-    // Hover the move row to reveal its submenu, then pick the folder.
-    fireEvent.click(screen.getByRole('menuitem', { name: /Move to folder/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Work' }))
-    await act(async () => { await Promise.resolve() })
-    expect(setFolderMembership).toHaveBeenCalledWith(wid('alpha'), 'f1')
-  })
-
-  it('offers the detach row and reports a Workspace leaving every folder', async () => {
-    const setFolderMembership = vi.fn(async () => undefined)
-    mount({
-      useWorkspaces: hook(workspaceState([workspace('alpha', [], 'Alpha')])),
-      useFolders: hook(folderState([
-        { folderId: 'f1' as never, title: 'Work', workspaceIds: [wid('alpha')], expanded: true, createdAt: '2026-01-01T00:00:00.000Z' },
-      ])),
-      setFolderMembership,
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Workspace actions for Alpha' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Move to folder/ }))
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from folder' }))
-    await act(async () => { await Promise.resolve() })
-    expect(setFolderMembership).toHaveBeenCalledWith(wid('alpha'), undefined)
+    expect(openWorkspaceMenu).toHaveBeenCalledWith(
+      wid('alpha'), '/projects/alpha', 'Alpha', expect.anything(), 'toggle',
+    )
   })
 
   it('hides the folder group-by row when no folder capability is composed', () => {

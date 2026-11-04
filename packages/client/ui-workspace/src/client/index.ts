@@ -1,3 +1,6 @@
+import { IconCheckOutlineRegular, IconEditOutlineRegular, IconTrashOutlineRegular, IconPinFillRegular, IconPinOutlineRegular, IconUnarchiveOutlineRegular, IconArchiveOutlineRegular, IconBranchOutlineRegular, IconCopyOutlineRegular, IconFolderCloseRegular, IconFolderOpenRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { SessionMenu } from './session-actions/SessionMenu.tsx'
+import type { MenuAction } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 /**
  * Workspace plugin, browser half. Two registrations: WorkspaceBrowser fills
  * the sidebar shell's `sidebar.workspaces` hole (the whole browsing region),
@@ -6,10 +9,9 @@
  * Workspaces through the global useWorkspaces hook, and each declares its
  * own `single` directory-flow child hole for the composed picker package's
  * client half. WorkspaceBrowser additionally declares the two Session row
- * action lists, and this apply registers the shipped actions — pin, rename,
- * fork, archive, copy ID — into them the way any client plugin would, each
- * with its own behavior, plus the dialogs and the row-action notice into
- * `shell.overlay` (see the contract module doc). It also declares two
+ * action lists. Built-in Session menu actions contribute structured data to
+ * ctx.contextMenus, while external React entries retain the legacy Slot. Dialogs and
+ * the row-action notice register in `shell.overlay` (see the contract module doc). It also declares two
  * Session-row seats: the leading decoration a row renders only while its own
  * primary state is idle, and the section the row's hover card renders between
  * its relative time and its trailing status line. Export discipline:
@@ -42,22 +44,21 @@ import {
   type ArchiveSessionInjected, type ForkSessionInjected, menuOpenStateFactory, type PinSessionInjected,
   type SessionArchiveConfirmInjected, type SessionArchiveConfirmRequest,
   type RenameSessionInjected, type RowToast, type RowToastInjected, type RowToastState, type SessionRenameDialogInjected,
-  type SessionIdInjected, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
+  type WorkspaceActionRequest, type SessionIdInjected, type WorkspaceBrowserInjected, type WorkspacePickerInjected,
 } from './contract/slots.ts'
 import { createWorkspaceShortcutControls, installWorkspaceShortcuts } from './shortcuts.ts'
 import { UiWorkspaceService } from './navigation.ts'
 import { createWorkspaceViewStore } from './stores.ts'
 import { WorkspaceBrowser } from './rows/WorkspaceBrowser.tsx'
-import { ArchiveSessionMenuItem, ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
+import { ArchiveSessionRowButton, SessionArchiveConfirmDialog } from './session-actions/ArchiveSession.tsx'
 import { derive } from './session-actions/derived.ts'
-import { ForkSessionMenuItem } from './session-actions/ForkSession.tsx'
-import { PinSessionMenuItem, PinSessionRowButton } from './session-actions/PinSession.tsx'
-import { RenameSessionMenuItem, SessionRenameDialog } from './session-actions/RenameSession.tsx'
+import { registerSessionMenus } from './session-actions/context-menus.tsx'
+import { PinSessionRowButton } from './session-actions/PinSession.tsx'
+import { SessionRenameDialog } from './session-actions/RenameSession.tsx'
 import { RowActionToast } from './session-actions/RowActionToast.tsx'
 import { registerToasts } from './toast/register.ts'
-import { SessionIdMenuItem } from './session-actions/SessionId.tsx'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
-import { en, zh, type WorkspaceKey } from './locales.ts'
+import { en, ja, es, fr, de, ru, pt, zh, type WorkspaceKey } from './locales.ts'
 
 export type { StartSessionOptions, UiWorkspace } from './navigation.ts'
 export type {
@@ -115,7 +116,7 @@ function readFolderService(ctx: Context): FolderService | undefined {
  * provides a waitable service. apply therefore depends on each slot
  * declaration through `slots.inject()` instead of assuming order.
  */
-export const inject = [
+export const inject = ['contextMenus',
   'slots', 'sessions', 'workspaces', 'locale', 'remote', 'remote.directoryPicker', 'layout', 'shortcuts', 'remoteAccess',
 ]
 
@@ -158,7 +159,7 @@ export function apply(ctx: Context): void {
         : ctx.remoteAccess.source('workspace', workspaceId, action),
     },
   })
-  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'ui-workspace: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-workspace: dictionaries')
   const shortcutControls = createWorkspaceShortcutControls()
 
   const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
@@ -287,7 +288,68 @@ export function apply(ctx: Context): void {
     hooks: { toast: rowToast },
     dismissToast: () => { rowToast.set(null) },
   })
+  const workspaceActionRequest = createSnapshotStore<WorkspaceActionRequest | null>(null)
+  const requestWorkspaceAction = (workspaceId: WorkspaceId, displayTitle: string, action: 'rename' | 'delete'): void => {
+    const workspace = workspaces.list.getSnapshot().items.find(row => row.workspaceId === workspaceId)
+    if (workspace === undefined || !ctx.remoteAccess.source('workspace', workspaceId, `workspace/${action}`).getSnapshot()) return
+    workspaceActionRequest.set({ action, workspaceId, displayTitle, storedTitle: workspace.title })
+  }
+  ctx.slots.inject('contextMenu.icon', function* () {
+    for (const [key, Icon] of Object.entries({
+      'workspace.rename': IconEditOutlineRegular, 'workspace.delete': IconTrashOutlineRegular,
+      'workspace.pin': IconPinOutlineRegular, 'workspace.unpin': IconPinFillRegular,
+      'workspace.archive': IconArchiveOutlineRegular, 'workspace.unarchive': IconUnarchiveOutlineRegular,
+      'workspace.fork': IconBranchOutlineRegular, 'workspace.copy': IconCopyOutlineRegular,
+      'workspace.move': IconFolderCloseRegular, 'workspace.moveOut': IconFolderOpenRegular,
+      'workspace.moveCurrent': IconCheckOutlineRegular,
+    })) yield ctx.slots.register({ name: 'contextMenu.icon', key }, Icon)
+  })
+  ctx.effect(() => ctx.contextMenus.register({
+    id: 'workspace.rename', target: 'workspace', order: 100,
+    resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/rename').getSnapshot()
+      ? [{ id: 'rename', label: ctx.locale.bind(NS)('rename'), icon: { key: 'workspace.rename' }, run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'rename') } }] : [],
+  }), 'workspace: rename menu action')
+  ctx.effect(() => ctx.contextMenus.register({
+    id: 'workspace.delete', target: 'workspace', order: 300,
+    resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/delete').getSnapshot()
+      ? [{ id: 'delete', label: ctx.locale.bind(NS)('delete.workspace'), icon: { key: 'workspace.delete' }, danger: true, separatorBefore: true,
+        run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'delete') } }] : [],
+  }), 'workspace: delete menu action')
+  ctx.effect(() => ctx.contextMenus.register({
+    id: 'workspace.move', target: 'workspace', order: 200,
+    observe: () => [folderService?.list ?? emptyFolders],
+    // Folder membership is user-authored navigation state, so this submenu
+    // follows the folder projection instead of the Workspace's own endpoints.
+    resolve: ({ workspaceId }) => {
+      const folders = folderService?.list.getSnapshot().folders ?? []
+      if (folders.length === 0) return []
+      const t = ctx.locale.bind(NS)
+      const current = folders.find(folder => folder.workspaceIds.includes(workspaceId))?.folderId
+      const children: MenuAction[] = folders.map(folder => ({
+        id: `folder:${folder.folderId}`,
+        label: folder.title,
+        ...(folder.folderId === current ? { icon: { key: 'workspace.moveCurrent' } } : {}),
+        run: () => { void folderService?.setMembership(workspaceId, folder.folderId) },
+      }))
+      children.push({
+        id: 'move-out', label: t('folder.moveOut'), icon: { key: 'workspace.moveOut' },
+        run: () => { void folderService?.setMembership(workspaceId, undefined) },
+      })
+      return [{ id: 'move', label: t('folder.moveTo'), icon: { key: 'workspace.move' }, children }]
+    },
+  }), 'workspace: move-to-folder submenu')
   const browserInjected = (): WorkspaceBrowserInjected => ({
+    openWorkspaceMenu: (workspaceId, path, displayTitle, point, mode) => {
+      const target = ctx.contextMenus.active.getSnapshot()
+      if (mode === 'toggle' && target?.kind === 'workspace' && target.value.workspaceId === workspaceId) ctx.contextMenus.close()
+      else ctx.contextMenus.open({ kind: 'workspace', value: { workspaceId, path, displayTitle } }, point)
+    },
+    settleWorkspaceAction: () => { workspaceActionRequest.set(null) },
+    openSessionMenu: (sessionId, displayTitle, point, mode) => {
+      const target = ctx.contextMenus.active.getSnapshot()
+      if (mode === 'toggle' && target?.kind === 'session' && target.value.sessionId === sessionId) ctx.contextMenus.close()
+      else ctx.contextMenus.open({ kind: 'session', value: { sessionId, displayTitle } }, point)
+    },
     // Explicit group actions keep their target; unscoped New Session inherits
     // the current Session Workspace before the recent-Workspace fallback.
     startSession: (workspaceId, options) => { uiWorkspace.startSession(workspaceId, options) },
@@ -307,13 +369,8 @@ export function apply(ctx: Context): void {
     requestAddWorkspace: shortcutControls.add,
     closeAddWorkspace: shortcutControls.closeAdd,
     setDirectoryBusy: shortcutControls.directoryBusy,
-    hooks: {
-      directoryFlow: browserFlowSource,
-      hostInfo,
-      workspaceShortcuts: shortcutControls.state,
-      shortcuts: ctx.shortcuts.catalog,
-      folders: folderService?.list ?? emptyFolders,
-    },
+    hooks: { workspaceActionRequest, contextMenuTarget: ctx.contextMenus.active, directoryFlow: browserFlowSource, hostInfo,
+      workspaceShortcuts: shortcutControls.state, shortcuts: ctx.shortcuts.catalog, folders: folderService?.list ?? emptyFolders },
     folderSupport: folderService !== undefined,
     createFolder: title => folderService?.create(title) ?? Promise.resolve(undefined),
     renameFolder: (folderId, title) => folderService?.rename(folderId as never, title) ?? Promise.resolve(undefined),
@@ -344,14 +401,9 @@ export function apply(ctx: Context): void {
         name: 'sidebar.workspaces',
         children: {
           'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
-          // Every row entry reads the menu's open state through a hook bound
-          // from the row's render occurrence (the owner passes the state pair
-          // as hookContext).
-          'sidebar.workspaces.session.menu.item': {
-            kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
-          },
           'sidebar.workspaces.session.row.action': { kind: 'list', scope: 'root' },
-          'sidebar.session.row.leading': { kind: 'list', scope: 'root' },
+          'sidebar.session.row.leading': { kind: 'list', scope: 'root', inline: true },
+          'sidebar.session.row.trailing': { kind: 'list', scope: 'root', inline: true },
           'sidebar.session.row.hover': { kind: 'list', scope: 'root' },
         },
         store: viewStore,
@@ -362,6 +414,15 @@ export function apply(ctx: Context): void {
     ))
   }
   registerBrowser()
+  ctx.slots.inject('contextMenu.content', () => ctx.slots.register({
+    name: 'contextMenu.content', key: 'session',
+    children: { 'sidebar.workspaces.session.menu.item': {
+      kind: 'list', scope: 'root', inject: { hooks: { menuOpenState: menuOpenStateFactory, shortcuts: ctx.shortcuts.catalog } },
+    } },
+  }, SessionMenu))
+  registerSessionMenus(ctx, {
+    ...pinInjected(), ...archiveInjected(), ...renameInjected(), ...forkInjected(), ...sessionIdInjected(),
+  })
   if (folderService === undefined) {
     ctx.effect(() => {
       let done = false
@@ -378,13 +439,6 @@ export function apply(ctx: Context): void {
   // The shipped row actions take the same route as a plugin's: `slots.inject`
   // waits for the browser registration above to declare each list, and the
   // entries leave with it. Explicit orders leave room for plugin entries.
-  ctx.slots.inject('sidebar.workspaces.session.menu.item', function* () {
-    yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'pin', order: 100, locale: NS, inject: pinInjected }, PinSessionMenuItem)
-    yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'rename', order: 200, locale: NS, inject: renameInjected }, RenameSessionMenuItem)
-    yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'fork', order: 300, locale: NS, inject: forkInjected }, ForkSessionMenuItem)
-    yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'archive', order: 400, locale: NS, inject: archiveInjected }, ArchiveSessionMenuItem)
-    yield ctx.slots.register({ name: 'sidebar.workspaces.session.menu.item', id: 'session-id', order: 450, locale: NS, inject: sessionIdInjected }, SessionIdMenuItem)
-  })
   ctx.slots.inject('sidebar.workspaces.session.row.action', function* () {
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'archive', order: 100, locale: NS, inject: archiveInjected }, ArchiveSessionRowButton)
     yield ctx.slots.register({ name: 'sidebar.workspaces.session.row.action', id: 'pin', order: 200, locale: NS, inject: pinInjected }, PinSessionRowButton)

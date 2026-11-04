@@ -2,13 +2,14 @@
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, createEvent, fireEvent, render } from '@testing-library/react'
-import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, contextMenuHook, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot, WorkspaceView, WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { WorkspaceFoldersSnapshot } from '@deepseek-ai/dsh-api-workspace-folders/client'
 import type { SessionStatusSnapshot } from '@deepseek-ai/dsh-client-ui-session/client'
 import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
-import type { WorkspaceBrowserProps } from '../src/client/contract/slots.ts'
+import type { WorkspaceBrowserProps, WorkspaceActionRequest } from '../src/client/contract/slots.ts'
 import { createWorkspaceShortcutControls } from '../src/client/shortcuts.ts'
 import { createWorkspaceViewStore } from '../src/client/stores.ts'
 import { WorkspaceBrowser } from '../src/client/rows/WorkspaceBrowser.tsx'
@@ -83,6 +84,12 @@ function mountBrowser(options: { folderMode?: boolean } = {}) {
     ...allowAllAccess,
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
+    openWorkspaceMenu: vi.fn(),
+    useWorkspaceActionRequest: bindSnapshotSelector(createSnapshotStore<WorkspaceActionRequest | null>(null)),
+    settleWorkspaceAction: vi.fn(),
+    openSessionMenu: vi.fn(),
+    useContextMenuTarget: selector => selector(null),
+    useContextMenu: contextMenuHook(),
     startSession: vi.fn(),
     open: vi.fn(),
     searchSessions: vi.fn(async () => ({ items: [], hasMore: false })),

@@ -3,6 +3,7 @@ import { Context, FiberState } from '@deepseek-ai/cordis'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { WorkspaceId } from '@deepseek-ai/dsh-workspace'
@@ -45,6 +46,7 @@ async function harness(workspaces: readonly Workspace[] = [], options: { registr
   const ctx = new Context()
   await ctx.plugin(SystemPrompt)
   await ctx.plugin(ToolRuntime)
+  await ctx.plugin(NativeToolExecutor)
   const list = vi.fn(() => [...workspaces])
   if (options.registry !== false) ctx.provide('workspaceRegistry', { list } as never)
   const fiber = await ctx.plugin(ToolWorkspace)
@@ -55,9 +57,18 @@ let callCounter = 0
 
 /** Execute workspace_list with one argument object. */
 async function call(ctx: Context, args: unknown): Promise<ToolExecutionResult> {
-  return await ctx.tools.execute({
-    signal: testToolSignal, callId: ToolCallId(`call-${++callCounter}`), name: 'workspace_list', arguments: args,
+  const batch = await ctx.tools.execute({
+    signal: testToolSignal,
+    calls: [{
+      type: 'tool-call',
+      id: ToolCallId(`call-${++callCounter}`),
+      name: 'workspace_list',
+      arguments: JSON.stringify(args),
+    }],
   })
+  const result = batch.results[0]?.result
+  if (result === undefined) throw new Error('expected one tool result')
+  return result
 }
 
 /** The single text block every result carries. */

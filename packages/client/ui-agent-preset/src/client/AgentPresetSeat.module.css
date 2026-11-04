@@ -31,8 +31,10 @@
   cursor: pointer;
 }
 
-.option:not(:disabled):hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+@media (hover: hover) {
+  .option:not(:disabled):hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 /* The pressed button is the choice, so it carries the shared selected
