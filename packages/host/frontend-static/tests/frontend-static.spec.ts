@@ -127,6 +127,10 @@ describe('real Loader composition', () => {
       type: 'text/plain; charset=utf-8',
       body: 'dsh web authentication required; reopen the URL printed by dsh web.\n',
     })
+    expect(await request(port, '/', { headers: { accept: 'text/html,application/xhtml+xml' } })).toMatchObject({
+      status: 401,
+      type: 'text/html; charset=utf-8',
+    })
 
     // Real assets with their MIME types; a live rebuild is served on the next read.
     expect(await request(port, '/app.js')).toMatchObject({ status: 200, type: 'text/javascript; charset=utf-8', body: 'export {}' })

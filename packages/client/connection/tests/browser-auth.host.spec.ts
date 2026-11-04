@@ -63,6 +63,7 @@ function createAuth(
 function request(url: string, authority = '127.0.0.1:3080', init?: {
   cookie?: string
   method?: string
+  accept?: string
 }): ConnectionIndexRequest {
   return {
     method: init?.method ?? 'GET',
@@ -70,6 +71,7 @@ function request(url: string, authority = '127.0.0.1:3080', init?: {
     headers: {
       host: authority,
       ...init?.cookie === undefined ? {} : { cookie: init.cookie },
+      ...init?.accept === undefined ? {} : { accept: init.accept },
     },
   }
 }
@@ -285,6 +287,35 @@ describe('BrowserAuth', () => {
         ? undefined
         : 'dsh web authentication required; reopen the URL printed by dsh web.\n')
     }
+  })
+
+  it('gives a browser navigation without a sign-in the instruction page instead of a bare status', async () => {
+    const auth = await createAuth(new RecordCredentials())
+    const denied = response()
+    expect(auth.authorizeIndex(request('/', '127.0.0.1:3080', {
+      accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8',
+    }), denied.value)).toBe(false)
+    expect(denied.state.status).toBe(401)
+    expect(denied.state.headers).toEqual({
+      'cache-control': 'no-store',
+      'content-security-policy': "default-src 'none'",
+      'content-type': 'text/html; charset=utf-8',
+    })
+    expect(denied.state.body).toContain('DSH Web requires the URL printed by <code>dsh web</code>.')
+    expect(denied.state.body).toContain('<a href="./">Retry</a>')
+
+    const probe = response()
+    expect(auth.authorizeIndex(request('/', '127.0.0.1:3080', { accept: 'text/plain' }), probe.value)).toBe(false)
+    expect(probe.state.headers).toEqual({
+      'cache-control': 'no-store',
+      'content-type': 'text/plain; charset=utf-8',
+    })
+    expect(probe.state.body).toBe('dsh web authentication required; reopen the URL printed by dsh web.\n')
+
+    const head = response()
+    expect(auth.authorizeIndex(request('/', '127.0.0.1:3080', { method: 'HEAD', accept: 'text/html' }), head.value)).toBe(false)
+    expect([head.state.status, head.state.headers?.['content-type'], head.state.body])
+      .toEqual([401, 'text/html; charset=utf-8', undefined])
   })
 
   it('rejects tampering, expiry, future issuance, and a longer lifetime than configured', async () => {

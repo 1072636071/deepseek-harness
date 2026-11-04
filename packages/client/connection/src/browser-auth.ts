@@ -21,6 +21,17 @@ const STORED_SECRET_VERSION = 1
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]*$/
 const PROCESS_LAUNCH_TOKENS = new WeakMap<object, string>()
 
+/** What a browser navigation receives instead of a bare status line: the one action that signs it in. */
+const UNAUTHORIZED_HTML = [
+  '<!doctype html>',
+  '<html lang="en">',
+  '<meta charset="utf-8">',
+  '<title>DSH Web sign-in required</title>',
+  '<p>DSH Web requires the URL printed by <code>dsh web</code>. Open that URL to sign in.</p>',
+  '<p><a href="./">Retry</a></p>',
+  '</html>',
+].join('\n')
+
 interface StoredSecretPayload {
   readonly version: typeof STORED_SECRET_VERSION
   readonly secret: string
@@ -250,8 +261,8 @@ export class BrowserAuth {
   /**
    * Authenticate an index request. A valid root query token mints the cookie
    * and redirects to the directory-relative clean `./`; a valid cookie lets
-   * the caller serve the index; every other request receives the same minimal
-   * 401 response.
+   * the caller serve the index; every other request receives a 401 report in
+   * the form its `Accept` header asks for.
    * @param req - incoming root or configured-index request.
    * @param res - response owned when this method returns false.
    * @param secure - whether the listener receiving this request serves TLS; the
@@ -382,7 +393,25 @@ export class BrowserAuth {
     return payload
   }
 
+  /**
+   * Refuse a request that carries no valid sign-in. A browser navigation
+   * accepts HTML and receives the instruction page that names the URL
+   * `dsh web` printed; a probe that asks for plain text keeps the single-line
+   * report it parses.
+   * @param req - unauthenticated request.
+   * @param res - response owned to completion.
+   */
   private writeUnauthorized(req: ConnectionIndexRequest, res: ConnectionIndexResponse): void {
+    const acceptsHtml = header(req.headers, 'accept')?.toLowerCase().includes('text/html') === true
+    if (acceptsHtml) {
+      res.writeHead(401, {
+        'cache-control': 'no-store',
+        'content-security-policy': "default-src 'none'",
+        'content-type': 'text/html; charset=utf-8',
+      })
+      res.end(req.method === 'HEAD' ? undefined : UNAUTHORIZED_HTML)
+      return
+    }
     res.writeHead(401, {
       'cache-control': 'no-store',
       'content-type': 'text/plain; charset=utf-8',
