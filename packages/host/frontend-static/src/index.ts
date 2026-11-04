@@ -8,11 +8,12 @@
  * authentication and renders for the browser Peer; an in-process read renders
  * for the Peer its caller admitted. Both renders go through the webserver's
  * index render (structured injection rows, then raw taps). Non-index assets
- * stay public; every file other than the index carries a weak ETag with
- * `cache-control: no-cache` and answers a matching `If-None-Match` with 304,
- * while the index carries no cache headers. The dist location is workspace
- * knowledge of the composing application, so `distIndex` is typically
- * supplied through a `!!js` expression, never hardcoded by a deployment.
+ * stay public; every served file, including the rendered index, carries a weak
+ * ETag with `cache-control: no-cache` and answers a matching `If-None-Match`
+ * with 304, so a page revalidates the document before reusing it. The dist
+ * location is workspace knowledge of the composing application, so `distIndex`
+ * is typically supplied through a `!!js` expression, never hardcoded by a
+ * deployment.
  * @module @deepseek-ai/dsh-host-frontend-static
  */
 
@@ -74,6 +75,11 @@ function bytesBody(bytes: Uint8Array): ReadableStream<Uint8Array> {
   })
 }
 
+/** Weak validator over the served bytes; gzip changes the transferred bytes. */
+function weakEtag(body: string | Uint8Array<ArrayBuffer>): string {
+  return `W/"${createHash('sha1').update(body).digest('base64url')}"`
+}
+
 /**
  * Answer one GET or HEAD dist request; the webserver answers any other method
  * with 405 before a resource runs. A malformed percent-escape or a filesystem
@@ -86,9 +92,10 @@ function bytesBody(bytes: Uint8Array): ReadableStream<Uint8Array> {
  * @param renderIndex - turns the raw index.html body into the served document
  * for the dist root and configured index path.
  * @returns the dist response; a HEAD response carries the GET status and
- * headers without a body. A file other than the index carries
- * `cache-control: no-cache` and a weak ETag from a SHA-1 of its bytes, and a
- * request whose `If-None-Match` equals that ETag receives an empty 304.
+ * headers without a body. Every served file carries `cache-control: no-cache`
+ * and a weak ETag from a SHA-1 of its served bytes — the rendered document for
+ * the index — and a request whose `If-None-Match` equals that ETag receives an
+ * empty 304.
  */
 async function serveStatic(
   request: Request, distRoot: string, distIndex: string,
@@ -101,19 +108,16 @@ async function serveStatic(
   // suffix would reject every legitimate subpath as traversal.
   if (target !== distRoot && !target.startsWith(distRoot + sep)) return new Response(null, { status: 403 })
   let body: string | Uint8Array<ArrayBuffer>
-  let headers: Record<string, string>
+  let contentType: string
   try {
     if (target === distRoot || target === distIndex) {
       const refusal = authorizeIndex()
       if (refusal !== undefined) return refusal
       body = renderIndex(await readFile(distIndex, 'utf8'))
-      headers = { 'content-type': HTML_MIME }
+      contentType = HTML_MIME
     } else {
       body = await readFile(target)
-      // Weak: gzip changes the transferred bytes.
-      const cache = { 'cache-control': 'no-cache', etag: `W/"${createHash('sha1').update(body).digest('base64url')}"` }
-      if (request.headers.get('if-none-match') === cache.etag) return new Response(null, { status: 304, headers: cache })
-      headers = { 'content-type': MIME[extname(target)] ?? 'application/octet-stream', ...cache }
+      contentType = MIME[extname(target)] ?? 'application/octet-stream'
     }
   } catch (error) {
     // Only absent or non-file targets are 404; other filesystem failures reach
@@ -121,6 +125,11 @@ async function serveStatic(
     if (!STATIC_MISS_CODES.has((error as NodeJS.ErrnoException).code)) throw error
     return new Response(null, { status: 404 })
   }
+  // The index is validated over its rendered document, so injected boot data
+  // that changes between builds also changes the validator.
+  const cache = { 'cache-control': 'no-cache', etag: weakEtag(body) }
+  if (request.headers.get('if-none-match') === cache.etag) return new Response(null, { status: 304, headers: cache })
+  const headers = { 'content-type': contentType, ...cache }
   if (request.method === 'HEAD') return new Response(null, { status: 200, headers })
   return new Response(typeof body === 'string' ? body : bytesBody(body), { status: 200, headers })
 }

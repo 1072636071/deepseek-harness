@@ -298,12 +298,19 @@ describe('real Loader composition', () => {
     expect(rebuilt.headers.get('etag')).not.toBe(etag)
     expect(await rebuilt.text()).toBe('export const rebuilt = true')
 
-    // Only the rendered index carries no cache headers; another HTML file revalidates.
+    // The rendered document revalidates like every other served file.
     const html = await fetch(`${base}/preview.html`)
     expect([html.status, html.headers.get('cache-control')]).toEqual([200, 'no-cache'])
     expect(html.headers.get('etag')).toMatch(/^W\//)
     expect(await html.text()).toBe('<body>preview</body>')
     const index = await loaded.webServer.readResource(new Request(`${base}/`), reader)
-    expect([index.status, index.headers.get('cache-control'), index.headers.get('etag')]).toEqual([200, null, null])
+    expect([index.status, index.headers.get('cache-control')]).toEqual([200, 'no-cache'])
+    expect(index.headers.get('etag')).toMatch(/^W\//)
+    const indexRevalidated = await loaded.webServer.readResource(
+      new Request(`${base}/`, { headers: { 'if-none-match': index.headers.get('etag')! } }),
+      reader,
+    )
+    expect([indexRevalidated.status, indexRevalidated.headers.get('cache-control'), await indexRevalidated.text()])
+      .toEqual([304, 'no-cache', ''])
   })
 })
