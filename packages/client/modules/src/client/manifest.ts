@@ -381,6 +381,12 @@ export interface ClientModuleCreateOptions {
   staticModules: Record<string, unknown>
   /** Bundle-load hook. Defaults to a same-origin classic `<script src>` element. */
   loadBundle?: (url: string) => Promise<void>
+  /**
+   * Report of a bundle URL whose transport failed. A classic script element
+   * exposes no status or headers, so this report is the page's only evidence
+   * that the document may be holding a build the Host no longer serves.
+   */
+  onTransportError?: (url: string) => void
   /** Package-asset reference hook behind {@link ClientBundleRequire.asset}. Defaults to returning the reference. */
   resolveAsset?: (reference: string) => string
 }
@@ -493,6 +499,12 @@ export interface ClientModuleSystemOptions {
   bootstrapModule: ClientBootstrapModule
   /** Bundle-load hook. Defaults to a same-origin classic `<script src>` element. */
   loadBundle?: (url: string) => Promise<void>
+  /**
+   * Report of a bundle URL whose transport failed. A classic script element
+   * exposes no status or headers, so this report is the page's only evidence
+   * that the document may be holding a build the Host no longer serves.
+   */
+  onTransportError?: (url: string) => void
   /** Package-asset reference hook behind {@link ClientBundleRequire.asset}. Defaults to returning the reference. */
   resolveAsset?: (reference: string) => string
 }

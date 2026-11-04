@@ -200,6 +200,15 @@ const SOURCE_URL_TRAILER = /(?:\r?\n)?\/\/# sourceURL=([^\r\n]+)(?:\r?\n)?$/
 /** Published package-local client chunk names accepted by the on-demand route. */
 const CLIENT_CHUNK = /^client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js$/
 
+/** Combo route as the browser requests it: the ordered package list and the revision it names. */
+const COMBO_ROUTE = /^\/plugins\/\?\?([^&]+)&rev=([^&#]*)(?:&.*)?$/
+
+/** Package-local chunk route as the browser requests it: the package, its chunk file, and the revision it names. */
+const CHUNK_ROUTE = /^\/plugins\/(@[^/]+\/[^/]+|[^@/][^/]*)\/(client\.[A-Za-z0-9][A-Za-z0-9._-]*\.js(?:\.map)?)\?rev=([^&#]*)(?:&.*)?$/
+
+/** Error tag of the structured answer for a resource whose revision this Host no longer serves. */
+const STALE_CLIENT_BUNDLE = 'stale-client-bundle'
+
 /** Resolve `exports["./client"]` to a relative path, accepting the string and one-level conditional forms. */
 function clientExportOf(pkgName: string, exportsField: unknown): string | undefined {
   if (typeof exportsField !== 'object' || exportsField === null) return undefined
@@ -1262,7 +1271,10 @@ export class ClientModuleRegistry extends Service {
    * Answer one `/plugins` request. A `/plugins/<package>/assets/` path is
    * answered by the package-asset route alone; any other path is an advertised
    * combo or its map, a prior startup generation, or a current-revision
-   * package-local chunk, in that order, and otherwise 404.
+   * package-local chunk, in that order. A route naming a resource this Host
+   * still serves under another revision answers 410 with the current revision,
+   * so a page holding a previous build can name its replacement instead of
+   * reading the failure as a missing plugin. Anything else answers 404.
    */
   private async bundleResource(method: string | undefined, url: string, ifNoneMatch: string | undefined): Promise<{
     status: number
@@ -1289,7 +1301,41 @@ export class ClientModuleRegistry extends Service {
     }
     // Anything else under /plugins (including unadvertised combinations and
     // /plugins/events when the HMR row is absent) is an unknown resource.
-    return { status: 404 }
+    const currentRev = this.staleRevision(requestUrl)
+    if (currentRev === undefined) return { status: 404 }
+    return {
+      status: 410,
+      headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+      ...(method === 'HEAD'
+        ? {}
+        : { body: Buffer.from(JSON.stringify({ error: STALE_CLIENT_BUNDLE, currentRev })) }),
+    }
+  }
+
+  /**
+   * Current revision of the build a stale route names, or undefined when the
+   * route names no resource this Host serves. A combo is stale when the same
+   * ordered package list is currently served under another revision; a
+   * package-local chunk is stale when its package is active and its revision
+   * differs from the requested one.
+   * @param requestUrl - absolute request URL below the `/plugins` route.
+   * @returns the revision now serving the same resource, if any.
+   */
+  private staleRevision(requestUrl: URL): string | undefined {
+    const route = `${requestUrl.pathname}${requestUrl.search}`
+    const combo = COMBO_ROUTE.exec(route)
+    if (combo !== null) {
+      for (const servedRoute of this.responses.keys()) {
+        const served = COMBO_ROUTE.exec(servedRoute)
+        if (served !== null && served[1] === combo[1]) return served[2]
+      }
+      return undefined
+    }
+    const chunk = CHUNK_ROUTE.exec(route)
+    if (chunk === null) return undefined
+    const [, packageName = '', , requestedRev = ''] = chunk
+    const record = this.table.get(packageName)
+    return record === undefined || record.entry.rev === requestedRev ? undefined : record.entry.rev
   }
 
 }

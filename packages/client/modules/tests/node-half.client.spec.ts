@@ -857,7 +857,7 @@ describe('client bundle activation', () => {
     expect(third).not.toBe(first)
     expect(third).not.toBe(second)
     expect(service.artifactBaseline(packageName)!.size).toBeGreaterThan(secondSize)
-    expect((await routeRequest(route, first)).status).toBe(404)
+    expect((await routeRequest(route, first)).status).toBe(410)
     expect((await routeRequest(route, second)).status).toBe(200)
     expect((await routeRequest(route, third)).status).toBe(200)
   })
@@ -1055,7 +1055,15 @@ describe('client bundle activation', () => {
         },
       }],
     })
-    expect((await routeRequest(route, `${row.url}&stale=1`.replace(`rev=${row.rev}`, 'rev=stale'))).status).toBe(404)
+    const staleCombo = await routeRequest(route, `${row.url}&stale=1`.replace(`rev=${row.rev}`, 'rev=stale'))
+    expect(staleCombo.status).toBe(410)
+    expect(staleCombo.headers['cache-control']).toBe('no-store')
+    // The current revision serving this ordered package list, whichever advertised route carries it.
+    expect(JSON.parse(staleCombo.body.toString('utf8'))).toEqual({
+      error: 'stale-client-bundle',
+      currentRev: service.graph().batches[0]!.rev,
+    })
+    expect((await routeRequest(route, '/plugins/??@fixture/absent/client.js&rev=stale')).status).toBe(404)
 
     writeFileSync(`${clientPath}.map`, '{"version":3,"names":[],"mappings":"AAAA","sources":["src/changed.tsx"]}\n')
     const entryStat = statSync(clientPath)
@@ -1094,7 +1102,12 @@ describe('client bundle activation', () => {
     expect(chunk.body.toString('utf8')).toContain('terminal loaded')
     expect(chunk.body.toString('utf8')).toContain(`sourceMappingURL=${chunkMapReference('client.terminal.js', row.rev)}`)
     expect((await routeRequest(route, url.replace('.js?', '.js.map?'))).status).toBe(200)
-    expect((await routeRequest(route, url.replace(`rev=${row.rev}`, 'rev=stale'))).status).toBe(404)
+    const staleChunk = await routeRequest(route, url.replace(`rev=${row.rev}`, 'rev=stale'))
+    expect(staleChunk.status).toBe(410)
+    expect(JSON.parse(staleChunk.body.toString('utf8'))).toEqual({
+      error: 'stale-client-bundle',
+      currentRev: row.rev,
+    })
   })
 
   it('serves a chunk of a package named @scope/assets instead of treating it as an asset request', async () => {
@@ -1196,7 +1209,12 @@ describe('client bundle activation', () => {
     utimesSync(clientPath, entryStat.atime, completed)
     const nextRev = service.rebuilt(packageName)!
     expect(nextRev).not.toBe(firstRow.rev)
-    expect((await routeRequest(route, firstUrl)).status).toBe(404)
+    const staleChunk = await routeRequest(route, firstUrl)
+    expect(staleChunk.status).toBe(410)
+    expect(JSON.parse(staleChunk.body.toString('utf8'))).toEqual({
+      error: 'stale-client-bundle',
+      currentRev: nextRev,
+    })
     const nextUrl = chunkReference(packageName, 'client.terminal.js', nextRev)
     expect((await routeRequest(route, nextUrl)).body.toString('utf8')).toContain('generation: 2')
   })

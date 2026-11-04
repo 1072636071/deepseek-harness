@@ -25,6 +25,7 @@ export class BootPage {
   private readonly active = new Set<string>()
   private total = 0
   private failure: string | undefined
+  private reload: (() => void) | undefined
 
   /**
    * Build and attach the boot page.
@@ -74,6 +75,17 @@ export class BootPage {
     this.render()
   }
 
+  /**
+   * Report a page holding a client build the Host no longer serves, and offer
+   * the reload that replaces it. The caller owns the reload action so it can
+   * bound how often a failing Host retries.
+   * @param reload - Reload action behind the recovery button.
+   */
+  staleClient(reload: () => void): void {
+    this.reload = reload
+    this.render()
+  }
+
   /** Detach the page before or after the UI renderer takes the mount point. */
   dispose(): void {
     this.root.remove()
@@ -81,6 +93,20 @@ export class BootPage {
 
   /** Redraw the state-dependent content below the wordmark. */
   private render(): void {
+    if (this.reload !== undefined) {
+      const report = div(css.failed)
+      report.append(div(css.failedTitle, 'Client update required'))
+      report.append(div(css.failedItem, 'This page is running an outdated client build. Reload to load the current version.'))
+      if (this.failure !== undefined) report.append(div(css.failedItem, this.failure))
+      const button = document.createElement('button')
+      button.className = css.action ?? ''
+      button.type = 'button'
+      button.textContent = 'Reload'
+      button.addEventListener('click', () => { this.reload?.() })
+      report.append(button)
+      this.card.replaceChildren(this.wordmark, report)
+      return
+    }
     const failed = [...this.states].filter(([, state]) => state === 'failed').map(([id]) => id)
     if (this.failure === undefined && failed.length === 0) {
       if (this.spinner.parentElement !== this.card) {

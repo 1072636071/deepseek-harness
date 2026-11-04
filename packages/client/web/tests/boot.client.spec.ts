@@ -136,6 +136,36 @@ describe('bootstrap failure rendering', () => {
   })
 })
 
+describe('outdated document recovery', () => {
+  it('offers one automatic reload when a bundle transport fails during boot', async () => {
+    vi.useFakeTimers()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    sessionStorage.removeItem('dsh.boot.stale-reload')
+    const container = document.createElement('div')
+    document.body.append(container)
+    installFacade()
+    win.__DSH_BOOT__ = {
+      rev: 'graph',
+      entries: [{ id: 'stale', url: '/plugins/??stale/client.js&rev=old', rev: 'old' }],
+      batches: [{ phase: 'application', url: '/plugins/??stale/client.js&rev=old', rev: 'old', entries: ['stale'] }],
+    }
+    const entry = new AppWebEntry(container, {
+      loadBundle: async (url) => { throw new Error(`client-modules: bundle script ${url} failed to load`) },
+    })
+    try {
+      await entry.run()
+      expect(container.textContent).toContain('Client update required')
+      expect(container.textContent).toContain('Reload')
+      expect(sessionStorage.getItem('dsh.boot.stale-reload')).toBe('1')
+    } finally {
+      sessionStorage.removeItem('dsh.boot.stale-reload')
+      vi.useRealTimers()
+      await entry.dispose()
+    }
+    expect(error).toHaveBeenCalled()
+  })
+})
+
 describe('plugin activation', () => {
   it('prefetches a parser-loaded immediate row through the injected bundle transport', async () => {
     const container = document.createElement('div')

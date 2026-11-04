@@ -19,6 +19,37 @@ import './base.css'
 /** Module transport hook replaced by jsdom tests. */
 export type BootSeams = Pick<ClientModuleCreateOptions, 'loadBundle' | 'resolveAsset'>
 
+/** Per-tab marker of the one automatic reload already spent on an outdated document. */
+const STALE_RELOAD_KEY = 'dsh.boot.stale-reload'
+
+/** Whether this tab already reloaded once to replace an outdated client build. */
+function staleReloadAttempted(): boolean {
+  try {
+    return globalThis.sessionStorage.getItem(STALE_RELOAD_KEY) !== null
+  } catch {
+    // Blocked storage cannot record attempts; this one counts as the first.
+    return false
+  }
+}
+
+/** Spend this tab's one automatic stale-client reload. */
+function markStaleReload(): void {
+  try {
+    globalThis.sessionStorage.setItem(STALE_RELOAD_KEY, '1')
+  } catch {
+    // Blocked storage cannot hold the guard; the recovery button still reloads.
+  }
+}
+
+/** Forget the guard after a successful boot, so a later rebuild can still reload this tab once. */
+function clearStaleReloadGuard(): void {
+  try {
+    globalThis.sessionStorage.removeItem(STALE_RELOAD_KEY)
+  } catch {
+    // Blocked storage holds no guard to clear.
+  }
+}
+
 /** Browser boot entry consumed by `apps/web`. */
 export class AppWebEntry {
   private readonly container: HTMLElement
@@ -26,6 +57,7 @@ export class AppWebEntry {
   private readonly page: BootPage
   private ctx: Context | undefined
   private stopDragRecall: (() => void) | undefined
+  private booting = true
   private modules!: ClientModuleSystem
   private manifest!: BootManifest
 
@@ -73,6 +105,9 @@ export class AppWebEntry {
         staticModules: getStaticModules(),
         ...transport?.loadBundle === undefined ? {} : { loadBundle: transport.loadBundle },
         ...transport?.resolveAsset === undefined ? {} : { resolveAsset: transport.resolveAsset },
+        onTransportError: () => {
+          this.offerStaleRecovery()
+        },
         ...this.seams,
       })
       this.manifest = this.modules.manifest
@@ -96,6 +131,8 @@ export class AppWebEntry {
       // renderer draws is the one the first frame measures.
       this.stopDragRecall = installWindowDragRecall({ document: this.container.ownerDocument })
       await mountClient(ctx, this.container)
+      this.booting = false
+      clearStaleReloadGuard()
     } catch (reason) {
       console.error(reason)
       if (onFailure !== undefined) onFailure(reason)
@@ -105,12 +142,31 @@ export class AppWebEntry {
 
   /** Dispose the client plugin tree and whichever page owns the mount point. */
   async dispose(): Promise<void> {
+    this.booting = false
     this.stopDragRecall?.()
     this.stopDragRecall = undefined
     const ctx = this.ctx
     this.ctx = undefined
     if (ctx !== undefined) await ctx.fiber.dispose()
     this.page.dispose()
+  }
+
+  /**
+   * Offer the reload that replaces a client build this page can no longer
+   * load. A classic script element exposes no status or headers, so any
+   * bundle transport failure during boot is reported as a possibly outdated
+   * document. One automatic attempt per tab keeps an unreachable Host from
+   * reloading forever; the notice's button stays available for the user.
+   */
+  private offerStaleRecovery(): void {
+    // After the first mount the running application owns its own recovery;
+    // a reload here would discard a live session.
+    if (!this.booting) return
+    const reload = (): void => { globalThis.location.reload() }
+    this.page.staleClient(reload)
+    if (staleReloadAttempted()) return
+    markStaleReload()
+    setTimeout(reload, 0)
   }
 
   /** Prefetch stage-one bundles and their dynamic requests before concurrent plugin imports. */

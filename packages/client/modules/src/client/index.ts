@@ -48,6 +48,7 @@ export function createClientModuleSystem(
     registrationTarget: target,
     bootstrapModule,
     ...(options.loadBundle === undefined ? {} : { loadBundle: options.loadBundle }),
+    ...(options.onTransportError === undefined ? {} : { onTransportError: options.onTransportError }),
     ...(options.resolveAsset === undefined ? {} : { resolveAsset: options.resolveAsset }),
   })
 }

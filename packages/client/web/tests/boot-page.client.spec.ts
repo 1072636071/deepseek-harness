@@ -53,6 +53,26 @@ describe('BootPage', () => {
     expect(el.textContent).not.toContain('Loading plugins…')
   })
 
+  it('offers the reload that replaces an outdated client build', () => {
+    const { el, page } = mount()
+    const reloads: number[] = []
+    page.staleClient(() => { reloads.push(1) })
+    expect(el.textContent).toContain('Client update required')
+    expect(el.textContent).toContain('This page is running an outdated client build. Reload to load the current version.')
+    const button = el.querySelector<HTMLButtonElement>('button')
+    expect(button?.textContent).toBe('Reload')
+    button?.click()
+    expect(reloads).toHaveLength(1)
+  })
+
+  it('keeps the boot failure report under the outdated-build notice', () => {
+    const { el, page } = mount()
+    page.fail('client-modules: could not load "x": plugins/??x/client.js&rev=1: bundle script failed to load')
+    page.staleClient(() => {})
+    expect(el.textContent).toContain('Client update required')
+    expect(el.textContent).toContain('bundle script failed to load')
+  })
+
   it('detaches on disposal', () => {
     const { el, page } = mount()
     page.dispose()

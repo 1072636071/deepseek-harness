@@ -112,6 +112,8 @@ export class ClientModuleSystem implements ClientModuleLoader {
   private readonly graphRows = new Map<string, BootModuleRow>()
   private readonly loadBundle: (url: string) => Promise<void>
   private readonly resolveAsset: (reference: string) => string
+  /** Optional report of a bundle URL whose transport failed. */
+  private readonly onTransportError: ((url: string) => void) | undefined
   /** Last import or prefetch failure per graph row, cleared by a later success or invalidation. */
   private readonly importErrors = new Map<string, Error>()
   /** Batch URLs whose transport or execution already failed; rows still missing from them go straight to their one-resource URL. */
@@ -136,6 +138,7 @@ export class ClientModuleSystem implements ClientModuleLoader {
     this.seed = new Map(Object.entries(options.staticModules))
     this.loadBundle = options.loadBundle ?? defaultLoadBundle
     this.resolveAsset = options.resolveAsset ?? (reference => reference)
+    this.onTransportError = options.onTransportError
 
     for (const row of options.manifest.modules) {
       this.graphRows.set(row.id, row)
@@ -185,10 +188,28 @@ export class ClientModuleSystem implements ClientModuleLoader {
     if (transport === undefined) {
       transport = this.loadBundle(url)
         .then(() => { this.executedBundleUrls.add(url) })
+        .catch((error: unknown) => {
+          this.reportTransportError(url)
+          throw error
+        })
         .finally(() => { this.pendingArrival.delete(url) })
       this.pendingArrival.set(url, transport)
     }
     return transport
+  }
+
+  /**
+   * Report a failed bundle transport without letting the report replace or
+   * suppress the transport failure itself.
+   * @param url - bundle URL whose script did not execute.
+   */
+  private reportTransportError(url: string): void {
+    try {
+      this.onTransportError?.(url)
+    } catch (error) {
+      // A page that cannot render its recovery notice must still surface the transport failure.
+      console.error('client-modules: transport-error report failed', error)
+    }
   }
 
   /**

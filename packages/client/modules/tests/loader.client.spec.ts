@@ -79,6 +79,8 @@ function bench(
     chunks?: Record<string, Factory | null>
     /** Remaining transport rejections per URL (the `<script>` error event). */
     transportFailures?: Record<string, number>
+    /** Report of each URL whose transport failed. */
+    onTransportError?: (url: string) => void
     /** URLs whose script loads but registers only the listed ids (a runtime throw after those registrations). */
     registerOnly?: Record<string, string[]>
     resolveAsset?: (reference: string) => string
@@ -145,6 +147,7 @@ function bench(
     },
     staticModules: opts.seed ?? {},
     ...(opts.defaultTransport === true ? {} : { loadBundle }),
+    ...(opts.onTransportError === undefined ? {} : { onTransportError: opts.onTransportError }),
     ...(opts.resolveAsset === undefined ? {} : { resolveAsset: opts.resolveAsset }),
   })
   return { loader, target, fetched, gates }
@@ -390,6 +393,37 @@ describe('bundle arrival recovery', () => {
     expect(b.fetched.filter(url => url === APPLICATION_URL)).toHaveLength(2)
     expect(b.fetched.slice(2).sort()).toEqual([single('a'), single('b')].sort())
     expect(b.loader.importError('a')).toBeUndefined()
+  })
+
+  it('reports every transport failure to the page and still imports through the fallback', async () => {
+    const reported: string[] = []
+    const b = bench([row('a')], { a: () => ({ a: 1 }) }, {
+      transportFailures: { [APPLICATION_URL]: 2 },
+      onTransportError: (url) => { reported.push(url) },
+    })
+    expect(await b.loader.import('a', '', {})).toEqual({ a: 1 })
+    expect(reported).toEqual([APPLICATION_URL, APPLICATION_URL])
+    expect(b.fetched).toEqual([APPLICATION_URL, APPLICATION_URL, single('a')])
+  })
+
+  it('keeps the transport failure when the page report throws', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const b = bench([row('a')], {}, {
+      transportFailures: { [APPLICATION_URL]: 5 },
+      onTransportError: () => { throw new Error('recovery notice failed') },
+    })
+    const failures: string[] = []
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await b.loader.import('a', '', {})
+      } catch (reason) {
+        failures.push(String(reason))
+      }
+    }
+    expect(failures).toHaveLength(2)
+    expect(failures[0]).toContain('failed to load')
+    expect(error).toHaveBeenCalled()
+    error.mockRestore()
   })
 
   it('does not re-execute a batch that loaded without registering; the missing row loads alone', async () => {
