@@ -2,7 +2,11 @@
   - button "Open right sidebar"
 - text: Into the Unknown Preview
 - button "Choose workspace": workspace
-- button "Standard mode"
+- group "Choose the agent preset for your new task":
+  - button "Standard mode" [pressed]
+  - button "PTC mode"
+  - button "Minimal mode"
+  - button "Creator mode"
 - textbox "Describe what you want to build, / commands, @ files or sessions"
 - button "Add files or run commands"
 - 'button "Access mode, current: Workspace Write"': Workspace Write

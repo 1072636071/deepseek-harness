@@ -40,6 +40,10 @@ pnpm dsh web
 
 `pnpm run build` prepares the repository artifacts. `pnpm dsh web` uses those built artifacts without rebuilding.
 
+## Plugins
+
+DeepSeek Harness is extended by plugins. [dsh-agent-studio](https://github.com/thissensen/dsh-agent-studio) is one such plugin: it adds a GUI for configuring an agent's prompts, tools, skills, subagents and fallback models, and for assembling teams. A plugin is installed into a profile with `dsh plugin --profile <name> add <package>`.
+
 ## Community and support
 
 - Submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).

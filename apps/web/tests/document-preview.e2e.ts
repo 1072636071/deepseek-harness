@@ -610,10 +610,12 @@ else process.exit(1);
       await mkdir(SHOT_DIR, { recursive: true })
       await saveFailureShot(page, `screenshots/0908-document-preview/smoke-${process.pid}`)
     })
-    await page.locator('[data-slot="conversation.hero.agentPreset"]').getByRole('button', { name: 'Standard mode', exact: true }).click()
-    await expect.poll(() => page.getByRole('menuitem').count()).toBe(2)
-    expect(await page.getByRole('menuitem', { name: /^PTC mode|^Minimal mode/ }).count()).toBe(0)
-    await page.keyboard.press('Escape')
+    // Coding Tools are off in this lane, so the roster lists Standard and
+    // Creator only — PTC and Minimal are never offered.
+    const roster = page.getByRole('group', { name: 'Choose the agent preset for your new task', exact: true })
+    await roster.waitFor({ timeout: 15_000 })
+    await expect.poll(() => roster.getByRole('button').count()).toBe(2)
+    expect(await roster.getByRole('button', { name: /^(PTC|Minimal) mode$/ }).count()).toBe(0)
     expect(scaffold.ctx.settings.describe().find(row => row.ns === 'ui-settings')?.value).toEqual({ enabled: false })
     const settled = scaffold.whenTurnSettled()
     const input = page.locator('[data-composer-input]').first()

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * The two conversation-adjacent surfaces: the new-session chip naming the
- * next session's preset, and the session header's read-only label. The split
- * is the host's rule — a session's history is produced under its preset's
- * tools, so the choice is only ever offered before one starts.
+ * The two conversation-adjacent surfaces: the new-session preset row naming
+ * the next session's preset as a row of buttons, and the session header's
+ * read-only label. The split is the host's rule — a session's history is
+ * produced under its preset's tools, so the choice is only ever offered before
+ * one starts.
  */
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -79,11 +80,16 @@ function renderSeat(
   return { ...actions, developerTools, store }
 }
 
+/** The row every assertion addresses its buttons through. */
+function row(): HTMLElement {
+  return screen.getByRole('group', { name: en.seatHint })
+}
+
 function renderLabel(
   summary: { blank: boolean; projectionValues?: { agentPreset?: string | null } } | undefined,
   roster: Partial<AgentPresetSettingsState> = {},
 ) {
-  // The chip and the label read the same roster, metadata included.
+  // The row and the label read the same roster, metadata included.
   const store = createSnapshotStore<AgentPresetSettingsState>({
     ...ROSTER_READY, options: SEAT_READY.options, ...roster,
   })
@@ -99,152 +105,139 @@ function renderLabel(
   return { load, view }
 }
 
-describe('the new-session chip', () => {
+describe('the new-session preset row', () => {
   it.each([false, true])('offers Standard, Creator and custom presets with Developer tools %s', (enabled) => {
     const actions = renderSeat({ options: [
       { id: 'standard' }, { id: 'ptc' }, { id: 'minimal' }, { id: 'cordis' }, { id: 'mine' },
     ] }, undefined, undefined, enabled)
 
-    fireEvent.click(screen.getByRole('button'))
-    expect(screen.getAllByRole('menuitem')).toHaveLength(enabled ? 5 : 3)
-    expect(screen.getByRole('menuitem', { name: /^Standard mode/ })).toBeTruthy()
-    expect(screen.getByRole('menuitem', { name: /^mine/ })).toBeTruthy()
-    expect(screen.queryByRole('menuitem', { name: /^PTC mode/ }) !== null).toBe(enabled)
-    expect(screen.queryByRole('menuitem', { name: /^Minimal mode/ }) !== null).toBe(enabled)
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Creator mode/ }))
+    // Every selectable preset is a button at once, so the roster is legible
+    // without opening anything; the pressed one is where the next session starts.
+    expect(screen.getAllByRole('button')).toHaveLength(enabled ? 5 : 3)
+    expect(screen.getByRole('button', { name: en.presetStandardName })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'mine' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: en.presetPtcName }) !== null).toBe(enabled)
+    expect(screen.queryByRole('button', { name: en.presetMinimalName }) !== null).toBe(enabled)
+    fireEvent.click(screen.getByRole('button', { name: en.presetCordisName }))
     expect(actions.select).toHaveBeenCalledWith('cordis')
   })
 
   it('keeps a named custom preset that overrides a development preset id', () => {
     renderSeat({ options: [{ id: 'ptc', name: 'My workflow' }] }, undefined, undefined, false)
-    fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByRole('menuitem', { name: /^My workflow/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'My workflow' })).toBeTruthy()
   })
 
-  it('keeps the current mode visible without opening a picker when all options are hidden', () => {
+  it('keeps the current mode visible when all options are hidden', () => {
     const actions = renderSeat({ current: 'minimal', options: [{ id: 'ptc' }, { id: 'minimal' }] }, undefined, undefined, false)
-    const trigger = screen.getByRole<HTMLButtonElement>('button', { name: en.presetMinimalName })
-    expect(trigger.disabled).toBe(true)
-    fireEvent.click(trigger)
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('menu')).toBeNull()
+    // Which composition the next session gets is never left to guessing, so the
+    // hidden current preset stays on screen — pinned, since Coding Tools hid it.
+    const pinned = screen.getByRole<HTMLButtonElement>('button', { name: en.presetMinimalName })
+    expect(pinned.disabled).toBe(true)
+    expect(pinned.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(pinned)
     expect(actions.select).not.toHaveBeenCalled()
   })
 
-  it('closes a picker when its last visible option disappears and keeps it closed when options return', () => {
-    const options = [{ id: 'minimal' }, { id: 'mine' }]
-    const actions = renderSeat({ current: 'minimal', options }, undefined, undefined, false)
-    const trigger = screen.getByRole<HTMLButtonElement>('button', { name: en.presetMinimalName })
-    fireEvent.click(trigger)
-    expect(screen.getByRole('menuitem', { name: /^mine/ })).toBeTruthy()
-    act(() => { actions.store.set({ ...actions.store.getSnapshot(), options: [{ id: 'ptc' }, { id: 'minimal' }] }) })
-    expect(trigger.disabled).toBe(true)
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('menu')).toBeNull()
-    act(() => { actions.store.set({ ...actions.store.getSnapshot(), options }) })
-    expect(trigger.disabled).toBe(false)
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(actions.select).not.toHaveBeenCalled()
+  it('pins a current preset that Coding Tools hide while its siblings stay selectable', () => {
+    const actions = renderSeat({ current: 'ptc', options: [{ id: 'standard' }, { id: 'ptc' }] }, undefined, undefined, false)
+    const pinned = screen.getByRole<HTMLButtonElement>('button', { name: en.presetPtcName })
+    expect(pinned.disabled).toBe(true)
+    expect(pinned.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: en.presetStandardName }))
+    expect(actions.select).toHaveBeenCalledWith('standard')
   })
 
   it('renders only for a Session retained by the main view', () => {
     renderSeat({}, undefined, {
       id: 's1', retainInfo: { referenceCount: 1, retainedBy: { mainView: 1 } },
     })
-    expect(screen.getByRole('button')).toBeTruthy()
+    expect(screen.getByRole('group', { name: en.seatHint })).toBeTruthy()
     cleanup()
 
     renderSeat({}, undefined, { id: 's1', retainInfo: undefined })
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('group', { name: en.seatHint })).toBeNull()
   })
 
-  it('reads the roster once and shows the staged preset by name', async () => {
+  it('reads the roster once and presses the staged preset', async () => {
     const actions = renderSeat()
 
     await waitFor(() => { expect(actions.load).toHaveBeenCalledTimes(1) })
-    expect(screen.getByRole('button').textContent).toContain(en.presetStandardName)
-    expect(screen.getByRole('button').getAttribute('title')).toBe(en.seatHint)
+    expect(screen.getByRole('button', { name: en.presetStandardName }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'mine' }).getAttribute('aria-pressed')).toBe('false')
+    expect(row().getAttribute('title')).toBeNull()
   })
 
-  it('offers each preset with what it is for', () => {
+  it('names what each preset is for on its own button', () => {
     renderSeat()
-
-    fireEvent.click(screen.getByRole('button'))
 
     // The id alone never said what a preset does; the description is the
     // whole reason a preset can publish metadata at all.
-    expect(screen.getByText(en.presetStandardDescription)).toBeTruthy()
-    // A preset that published none still reads as a row, with its id standing
-    // in for the name.
-    expect(screen.getByText(en.noDescription)).toBeTruthy()
-    expect(screen.getByText('mine')).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.presetStandardName }).getAttribute('title'))
+      .toBe(en.presetStandardDescription)
+    // A preset that published none still reads as a button, with its id
+    // standing in for the name.
+    expect(screen.getByRole('button', { name: 'mine' }).getAttribute('title')).toBe(en.noDescription)
   })
 
-  it('closes the picker immediately when developer tools turn off without changing the staged preset', () => {
+  it('stages the pressed preset and leaves the current one inert', () => {
     const actions = renderSeat()
-    fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByText(en.presetStandardDescription)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'mine' }))
+    expect(actions.select).toHaveBeenCalledWith('mine')
+
+    // Pressing the preset already staged asks the host for nothing.
+    fireEvent.click(screen.getByRole('button', { name: en.presetStandardName }))
+    expect(actions.select).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables every button while a switch is in flight', () => {
+    renderSeat({ busy: true })
+
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: en.presetStandardName }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'mine' }).disabled).toBe(true)
+  })
+
+  it('shows a refused switch on the row', () => {
+    renderSeat({ error: 'session has already started' })
+
+    expect(row().getAttribute('title')).toBe('session has already started')
+  })
+
+  it('follows a roster that hides a preset without changing the staged one', () => {
+    const actions = renderSeat({ options: [
+      { id: 'standard' }, { id: 'ptc' }, { id: 'minimal' }, { id: 'cordis' }, { id: 'mine' },
+    ] })
+
+    expect(screen.getAllByRole('button')).toHaveLength(5)
     act(() => { actions.developerTools.set(false) })
-    expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText(en.presetStandardDescription)).toBeNull()
+    expect(screen.getAllByRole('button')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: en.presetStandardName }).getAttribute('aria-pressed')).toBe('true')
     expect(actions.select).not.toHaveBeenCalled()
     act(() => { actions.developerTools.set(true) })
-    expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false')
-    expect(screen.getByRole('button').textContent).toContain(en.presetStandardName)
+    expect(screen.getAllByRole('button')).toHaveLength(5)
   })
 
   it('falls back to the id when the staged preset published no name', () => {
     renderSeat({ current: 'mine' })
 
-    expect(screen.getByRole('button').textContent).toContain('mine')
+    expect(screen.getByRole('button', { name: 'mine' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('shows the staged id until a stale roster contains it', () => {
     renderSeat({ current: 'arriving' })
 
-    expect(screen.getByRole('button').textContent).toContain('arriving')
-  })
-
-  it('stages the picked preset and closes the menu', () => {
-    const actions = renderSeat()
-    fireEvent.click(screen.getByRole('button'))
-
-    fireEvent.click(screen.getByText('mine'))
-
-    expect(actions.select).toHaveBeenCalledWith('mine')
-    expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false')
-  })
-
-  it('disables the trigger while a switch is in flight', () => {
-    renderSeat({ busy: true })
-
-    expect(screen.getByRole('button')).toHaveProperty('disabled', true)
-  })
-
-  it('shows a refused switch on the trigger', () => {
-    renderSeat({ error: 'session has already started' })
-
-    expect(screen.getByRole('button').getAttribute('title')).toBe('session has already started')
+    // The stage is the row's own answer; the roster only supplies names.
+    expect(screen.getByRole('button', { name: 'arriving' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('renders nothing before the roster arrives or when there is none', () => {
     const empty = renderSeat({ options: [] })
     expect(empty).toBeTruthy()
-    expect(screen.queryByRole('button')).toBeNull()
+    expect(screen.queryByRole('group', { name: en.seatHint })).toBeNull()
     cleanup()
 
     renderSeat({ current: '' })
-    expect(screen.queryByRole('button')).toBeNull()
-  })
-
-  it('closes on an outside dismissal', () => {
-    renderSeat()
-    fireEvent.click(screen.getByRole('button'))
-
-    fireEvent.keyDown(document, { key: 'Escape' })
-
-    expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('group', { name: en.seatHint })).toBeNull()
   })
 })
 
@@ -260,12 +253,12 @@ describe('a refused switch', () => {
       act(() => { actions.store.set({ ...actions.store.getSnapshot(), error: refusal }) })
 
       // The host refuses a mount discovery reported healthy, so this banner is
-      // the only place the cause appears — the chip has already reverted and
+      // the only place the cause appears — the row has already reverted and
       // the settings row shows the preset as fine.
       const banner = screen.getByRole('alert')
       expect(banner.textContent).toContain(reason)
       expect(banner.textContent).toContain(en.presetCordisName)
-      expect(screen.queryByRole('button')).toBeNull()
+      expect(screen.queryByRole('group', { name: en.seatHint })).toBeNull()
 
       act(() => { vi.advanceTimersByTime(7000) })
       act(() => { actions.store.set({ ...actions.store.getSnapshot(), error: { ...refusal } }) })
@@ -285,15 +278,14 @@ describe('a refused switch', () => {
   it('says nothing when the switch lands', async () => {
     const actions = renderSeat()
 
-    fireEvent.click(screen.getByRole('button'))
-    fireEvent.click(screen.getByRole('menuitem', { name: /mine/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'mine' }))
 
     await waitFor(() => { expect(actions.select).toHaveBeenCalledWith('mine') })
     expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 
-describe('the chip introduce cue', () => {
+describe('the pressed button introduce cue', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
@@ -301,7 +293,7 @@ describe('the chip introduce cue', () => {
 
   /** Character spans carry inline animation delays; nothing else does. */
   function delayedChars(): HTMLElement[] {
-    return Array.from(screen.getByRole('button').querySelectorAll<HTMLElement>('[style]'))
+    return Array.from(row().querySelectorAll<HTMLElement>('[style]'))
   }
 
   it('reveals a long Latin name inside the shared window, then acknowledges', () => {
@@ -317,13 +309,13 @@ describe('the chip introduce cue', () => {
     // fixed 40ms tick would have doubled the run for a Latin name.
     const chars = delayedChars()
     expect(chars.map(span => span.textContent).join('')).toBe('CreatorMode')
-    expect(chars[0]!.style.animationDelay).toBe('150ms')
-    expect(chars[1]!.style.animationDelay).toBe('170ms')
-    expect(chars[10]!.style.animationDelay).toBe('350ms')
+    expect(chars[0]!.style.animationDelay).toBe('0ms')
+    expect(chars[1]!.style.animationDelay).toBe('20ms')
+    expect(chars[10]!.style.animationDelay).toBe('200ms')
 
-    // 150 delay + 200 window + 400 fade: acknowledged only once the last
-    // character has settled, and the label is plain text again after.
-    act(() => { vi.advanceTimersByTime(749) })
+    // 200 window + 400 fade: acknowledged only once the last character has
+    // settled, and the label is plain text again after.
+    act(() => { vi.advanceTimersByTime(599) })
     expect(actions.introduced).not.toHaveBeenCalled()
     act(() => { vi.advanceTimersByTime(1) })
     expect(actions.introduced).toHaveBeenCalledTimes(1)
@@ -342,8 +334,8 @@ describe('the chip introduce cue', () => {
     // Four characters fit under the window, so the 40ms tick applies as-is.
     const chars = delayedChars()
     expect(chars).toHaveLength(4)
-    expect(chars[1]!.style.animationDelay).toBe('190ms')
-    expect(chars[3]!.style.animationDelay).toBe('270ms')
+    expect(chars[1]!.style.animationDelay).toBe('40ms')
+    expect(chars[3]!.style.animationDelay).toBe('120ms')
   })
 
   it('starts a one-character name with no stagger at all', () => {
@@ -355,8 +347,8 @@ describe('the chip introduce cue', () => {
       introduce: true,
     })
 
-    expect(delayedChars()[0]!.style.animationDelay).toBe('150ms')
-    act(() => { vi.advanceTimersByTime(550) })
+    expect(delayedChars()[0]!.style.animationDelay).toBe('0ms')
+    act(() => { vi.advanceTimersByTime(400) })
     expect(actions.introduced).toHaveBeenCalledTimes(1)
   })
 

@@ -2,7 +2,11 @@
   - button "Open right sidebar"
 - text: Into the Unknown Preview
 - button "Choose workspace": workspace
-- button "Standard mode"
+- group "Choose the agent preset for your new task":
+  - button "Standard mode" [pressed]
+  - button "PTC mode"
+  - button "Minimal mode"
+  - button "Creator mode"
 - textbox "Describe what you want to build, / commands, @ files or sessions":
   - paragraph: "Use the bash tool to run exactly: echo WEB_E2E_OK. Then reply with the single word DONE and stop."
 - button "Add files or run commands"

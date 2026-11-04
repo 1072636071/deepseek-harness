@@ -568,6 +568,18 @@ button.crumb:hover {
   padding: 0 16px 0 20px;
 }
 
+/* The preset button row sits right of the workspace chip and takes the slack;
+   a roster too wide for the line wraps onto the lines below instead of
+   compressing the chip or ellipsizing a preset name. Both stay top-aligned so
+   the chip keeps the first line instead of floating into the middle of a
+   multi-line roster. */
+.heroWorkspaceRow:has([data-agent-preset-row]) {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+
 /* Plugin options share the row, pushed to its right edge. */
 .heroOptions {
   display: flex;

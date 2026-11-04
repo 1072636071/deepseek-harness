@@ -16,7 +16,11 @@
   - button "打开右侧边栏"
 - text: 探索未至之境 预览版
 - button "选择工作区": workspace
-- button "标准模式"
+- group "选择新任务使用的 Agent 预设":
+  - button "标准模式" [pressed]
+  - button "PTC 模式"
+  - button "极简模式"
+  - button "创造模式"
 - textbox "描述你想要构建的内容, / 调用指令, @ 文件或对话"
 - button "添加文件或调用指令"
 - button "访问模式，当前：工作区内修改": 工作区内修改

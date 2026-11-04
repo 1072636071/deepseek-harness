@@ -1,2 +1,6 @@
 - button "Choose workspace": workspace
-- button "Standard mode"
+- group "Choose the agent preset for your new task":
+  - button "Standard mode" [pressed]
+  - button "PTC mode"
+  - button "Minimal mode"
+  - button "Creator mode"

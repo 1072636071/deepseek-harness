@@ -39,9 +39,9 @@ describe('web snapshot: standalone string editor through PTC', () => {
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
     await connectFreshWorkspace(page, scaffold.workspaceCwd)
-    await page.getByRole('button', { name: 'Standard mode', exact: true }).click()
-    await page.getByRole('menuitem', { name: /^PTC mode/ }).click()
-    await page.getByRole('button', { name: 'PTC mode', exact: true }).waitFor({ state: 'visible' })
+    await page.getByRole('button', { name: 'PTC mode', exact: true }).click()
+    await expect.poll(() => page.getByRole('button', { name: 'PTC mode', exact: true })
+      .getAttribute('aria-pressed')).toBe('true')
   })
 
   afterAll(async () => {

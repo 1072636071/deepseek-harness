@@ -254,9 +254,9 @@ describe('web e2e: agent-preset selection', () => {
   it('clears an unapplied hidden pick and creates a Standard session with the roster editable in Settings', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-hero'))
     expect(await livePreset(scaffold)).toBeUndefined()
-    await page.getByRole('button', { name: 'Standard mode', exact: true }).click()
-    await page.getByRole('menuitem', { name: /^Minimal mode/ }).click()
-    await page.getByRole('button', { name: 'Minimal mode', exact: true }).waitFor()
+    await page.getByRole('button', { name: 'Minimal mode', exact: true }).click()
+    await expect.poll(() => page.getByRole('button', { name: 'Minimal mode', exact: true })
+      .getAttribute('aria-pressed')).toBe('true')
     await openSettings(page, 'en')
     const dialog = page.getByRole('dialog', { name: 'Settings' })
     const codingTools = dialog.getByRole('switch', { name: 'Show coding view' })
@@ -281,28 +281,29 @@ describe('web e2e: agent-preset selection', () => {
     expect(snapshot).toContain('Standard mode')
   })
 
-  it('names every preset and what it is for', async () => {
+  it('names every preset and what it is for, all on screen at once', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-menu'))
-    await page.getByRole('button', { name: 'Standard mode' }).click()
-    const menu = page.getByRole('menu')
-    await menu.waitFor({ timeout: 10_000 })
+    const row = page.getByRole('group', { name: 'Choose the agent preset for your new task', exact: true })
+    await row.waitFor({ timeout: 10_000 })
 
-    const snapshot = await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd)
+    const snapshot = await captureStableAria(page, '[data-agent-preset-row]', scaffold.workspaceCwd)
 
     await compareOrRefreshGolden(MENU_EXPECTED, snapshot, MODE)
     // Every shipped preset, each with the sentence saying what it composes —
     // the id alone never said what a preset does.
     expect(snapshot).toContain('Minimal mode')
     expect(snapshot).toContain('Creator mode')
-    await page.keyboard.press('Escape')
+    // The descriptions live on the buttons themselves: a roster that fits on
+    // screen still has to say what each preset is for.
+    await expect(page.getByRole('button', { name: 'Minimal mode', exact: true })
+      .getAttribute('title')).resolves.toContain('terminal and image reading')
   })
 
   it('applies the staged pick to the blank session, and the host honors it', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-stage'))
-    await page.getByRole('button', { name: 'Standard mode' }).click()
-    await page.getByRole('menuitem', { name: /Minimal mode/ }).click()
+    await page.getByRole('button', { name: 'Minimal mode', exact: true }).click()
 
-    // The chip stages; the blank session the workspace connect produced is
+    // The row stages; the blank session the workspace connect produced is
     // what the stage lands on. The host's own answer is what comes back.
     await expect.poll(() => livePreset(scaffold), { timeout: 15_000 }).toBe('minimal')
     const roster = await scaffold.ctx.agentPresets.remoteExportList()
@@ -310,15 +311,14 @@ describe('web e2e: agent-preset selection', () => {
   })
 
   it('omits eagerly failed presets from selection and retains their diagnostics', async () => {
-    await page.getByRole('button', { name: 'Minimal mode' }).click()
-    await page.getByRole('menu').waitFor()
-    expect(await page.getByRole('menuitem', { name: /Refusing mode/ }).count()).toBe(0)
-    await page.keyboard.press('Escape')
+    // A preset whose declaration failed during eager activation never becomes a
+    // button; the roster reports why instead.
+    expect(await page.getByRole('button', { name: 'Refusing mode', exact: true }).count()).toBe(0)
     expect((await scaffold.ctx.agentPresets.resolve(REFUSING_ID)).broken).toContain('this row refuses to start')
   })
 
   it('re-reads the slash catalog through the composition the switch installed', async () => {
-    // Continues 'applies the staged pick': the chip has already applied `minimal` to
+    // Continues 'applies the staged pick': the row has already applied `minimal` to
     // the blank session, and this one reads the menu that switch left behind.
     onTestFailed(() => saveFailureShot(page, 'web-e2e-agent-preset-slash-catalog'))
     const composer = page.locator('[data-composer-input][contenteditable="true"]').last()
@@ -339,12 +339,11 @@ describe('web e2e: agent-preset selection', () => {
     expect(onMinimal.some(option => option.startsWith('model'))).toBe(true)
     await writeComposerDraft(page, composer, '')
 
-    // Switching back up reaches the host at all — the chip compares the pick
+    // Switching back up reaches the host at all — the row compares the pick
     // against its list row, so a row that never reprojected the first switch
     // answers "already standard" and sends nothing — and restores the catalog
     // instead of leaving the session reading the narrower composition.
-    await page.getByRole('button', { name: 'Minimal mode' }).click()
-    await page.getByRole('menuitem', { name: /^Standard mode/ }).first().click()
+    await page.getByRole('button', { name: 'Standard mode', exact: true }).click()
     await expect.poll(() => livePreset(scaffold), { timeout: 15_000 }).toBe('standard')
 
     await writeComposerDraft(page, composer, '/')
@@ -374,11 +373,13 @@ describe('web e2e: agent-preset selection', () => {
     await dialog.getByRole('button', { name: 'Close' }).last().click()
 
     await expect.poll(() => livePreset(scaffold), { timeout: 15_000 }).toBe('minimal')
-    await page.getByRole('button', { name: 'Minimal mode', exact: true }).click()
-    await page.getByRole('menu').waitFor()
-    expect(await page.getByRole('menuitem', { name: /^PTC mode|^Minimal mode/ }).count()).toBe(0)
-    expect(await page.getByRole('menuitem', { name: /^Standard mode|^Creator mode/ }).count()).toBe(2)
-    await page.keyboard.press('Escape')
+    // Coding Tools off hides PTC and Minimal from the roster, but the preset the
+    // next session will run stays on screen — pinned, so it cannot be re-picked.
+    const pinned = page.getByRole('button', { name: 'Minimal mode', exact: true })
+    await expect.poll(() => pinned.isDisabled()).toBe(true)
+    expect(await pinned.getAttribute('aria-pressed')).toBe('true')
+    expect(await page.getByRole('button', { name: 'PTC mode', exact: true }).count()).toBe(0)
+    expect(await page.getByRole('button', { name: /^(Standard|Creator) mode$/ }).count()).toBe(2)
     await expect.poll(async () => (await scaffold.ctx.agentPresets.remoteExportList()).presets.find(preset => preset.isDefault)?.id).toBe('standard')
 
     // The current Session is still the Workspace's only blank, so New Session names it for
@@ -474,12 +475,13 @@ it.each([false, true])('starts Creator from Plugins with Coding Tools=%s without
     const creator = scaffold.ctx.agents.get(creationBody.result.value.sessionId)
     if (creator === undefined) throw new Error('The Creator entry did not publish its Session')
     expect(creator.id).not.toBe(standard.id)
-    const picker = page.getByTitle('Choose the agent preset for your new task', { exact: true }).filter({ hasText: 'Creator mode' })
+    const picker = page.getByRole('group', { name: 'Choose the agent preset for your new task', exact: true }).filter({ hasText: 'Creator mode' })
     await picker.waitFor()
     const creatorComposer = composerOf(creator.id)
     await creatorComposer.waitFor()
     expect((await creatorComposer.innerText()).trim()).toBe('')
-    expect(await picker.getAttribute('aria-haspopup')).toBe('menu')
+    expect(await picker.getByRole('button', { name: 'Creator mode', exact: true })
+      .getAttribute('aria-pressed')).toBe('true')
     expect(await page.getByRole('dialog', { name: 'Add plugin', exact: true }).count()).toBe(0)
     expect(creator.session.header.agentPreset).toBe('cordis')
     expect(scaffold.ctx.sessionProjections.stateOf(creator.session, 'agentPreset')).toBe('cordis')

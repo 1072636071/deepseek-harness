@@ -44,6 +44,10 @@ pnpm dsh web
 
 `pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
 
+## 插件
+
+DeepSeek Harness 由插件扩展。[dsh-agent-studio](https://github.com/thissensen/dsh-agent-studio) 是其中之一：它提供图形界面，用来配置 Agent 的提示词、工具、技能、子代理与备用候选模型，并能组装团队。插件用 `dsh plugin --profile <name> add <package>` 装进某个 profile。
+
 ## 社区与支持
 
 - 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
